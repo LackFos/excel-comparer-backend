@@ -10,10 +10,24 @@ import {
   readExcelBuffer,
 } from "../libs/helpers/excelHelper";
 import { CreateTaskParams, UpdateTaskParams } from "../libs/types";
+import { endOfDay, isValid, parseISO, startOfDay } from "date-fns";
 
 export const getAllTask = async (req: Request, res: Response): Promise<void> => {
+  const { startDate, endDate } = req.query;
+
   try {
-    const tasks = await TaskModel.find().populate("excel");
+    const dateFilters: Record<string, Date> = {};
+
+    if (startDate) {
+      dateFilters["$gte"] = startOfDay(startDate as string);
+      dateFilters["$lte"] = endOfDay(startDate as string);
+
+      if (endDate) {
+        dateFilters["$lte"] = endOfDay(endDate as string);
+      }
+    }
+
+    const tasks = await TaskModel.find({ createdAt: dateFilters }).populate("excel");
 
     if (tasks.length === 0) {
       return responseHelper.throwNotFoundError("No tasks found", res);

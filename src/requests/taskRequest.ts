@@ -1,10 +1,25 @@
-import { array, number, object, string } from "yup";
+import { array, date, number, object, string } from "yup";
 import { Request, Response, NextFunction } from "express";
 import { ExcelOperator, TaskStatus } from "../libs/enum";
 import responseHelper from "../libs/helpers/responseHelper";
 import { checkExcelValidity, validateRequest } from "../libs/utils";
 import ExcelModel from "../models/ExcelModel";
 import { excelDocument } from "../interfaces/excel";
+
+export const getAllTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const dateParamsSchema = object({
+      startDate: date(),
+      endDate: date(),
+    });
+
+    await validateRequest(dateParamsSchema, req.query);
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const createTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
