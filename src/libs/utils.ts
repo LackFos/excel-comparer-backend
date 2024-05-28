@@ -15,23 +15,37 @@ export const checkExcelValidity = (file: Express.Multer.File): boolean => {
   return file.mimetype === xlsxFileMimetype;
 };
 
-export const filterDuplicate = (array: any[], countStart: number = 1): Map<string, number[]> => {
-  const productMap: Map<string, number[]> = new Map();
+export const filterDuplicate = (
+  array: any[],
+  countStart: number = 1
+): {
+  column: string;
+  rowNumbers: number[];
+}[] => {
+  const productMap: { [key: string]: number[] } = {};
 
   array.forEach((value, index) => {
-    const rowCounts = productMap.get(value);
-    if (rowCounts) {
-      rowCounts.push(countStart + index);
+    const rowIndex = index + countStart;
+    if (productMap[value]) {
+      productMap[value].push(rowIndex);
     } else {
-      productMap.set(value, [index + countStart]);
+      productMap[value] = [rowIndex];
     }
   });
 
-  for (const [key, value] of productMap) {
-    if (value.length <= 1) {
-      productMap.delete(key);
+  const result: {
+    column: any;
+    rowNumbers: number[];
+  }[] = [];
+
+  for (const key in productMap) {
+    if (productMap[key].length > 1) {
+      result.push({
+        column: key,
+        rowNumbers: productMap[key],
+      });
     }
   }
 
-  return productMap;
+  return result;
 };

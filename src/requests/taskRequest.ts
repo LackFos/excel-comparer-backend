@@ -15,22 +15,24 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
     const nameTypeConfigSchema = object({
       name: string().required(),
       type: string().required().oneOf(validTypes),
-      config: object({
-        color: string()
-          .required()
-          .test({
-            test: (value, context) => {
-              if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
-                return context.createError({
-                  message: "config.color must be a valid hex code (e.g., #AABBCC),",
-                });
-              }
-              return true;
-            },
-          }),
-        type: string().required().oneOf(Object.values(ExcelOperator)),
-        value: number().required(),
-      }).required(),
+      config: array().of(
+        object({
+          color: string()
+            .required()
+            .test({
+              test: (value, context) => {
+                if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
+                  return context.createError({
+                    message: "config.color must be a valid hex code (e.g., #AABBCC),",
+                  });
+                }
+                return true;
+              },
+            }),
+          type: string().required().oneOf(Object.values(ExcelOperator)),
+          value: number().required(),
+        })
+      ),
     });
     await validateRequest(nameTypeConfigSchema, req.body);
 

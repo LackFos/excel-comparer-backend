@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
-import { compareExcel } from "../controllers/excelController";
-import { compareExcelRequest } from "../requests/excelRequest";
+import { compareExcel, findMissingSku } from "../controllers/excelController";
+import { compareExcelRequest, findMissingSkuRequest } from "../requests/excelRequest";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -11,6 +11,13 @@ router.post(
   upload.fields([{ name: "mainFile", maxCount: 1 }, { name: "secondaryFiles" }]),
   compareExcelRequest,
   compareExcel
+);
+
+router.post(
+  "/missing-sku",
+  upload.fields([{ name: "mainFile", maxCount: 1 }, { name: "secondaryFiles" }]),
+  findMissingSkuRequest,
+  findMissingSku
 );
 
 export default router;
