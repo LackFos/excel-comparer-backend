@@ -35,6 +35,7 @@ const taskSchema = new Schema<taskDocument>(
     },
   },
   {
+    timestamps: true,
     toJSON: {
       virtuals: true,
       transform: function (doc, ret) {

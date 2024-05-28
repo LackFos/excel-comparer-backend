@@ -29,6 +29,7 @@ export const excelSchema = new Schema<excelDocument>(
     },
   },
   {
+    timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
