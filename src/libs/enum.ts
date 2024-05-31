@@ -1,7 +1,7 @@
 export enum TaskStatus {
   PENDING = "pending",
   DONE = "done",
-  CANCEL = "cancel",
+  REVISION = "revision",
 }
 
 export enum ExcelOperator {

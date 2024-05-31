@@ -63,6 +63,9 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
       {}
     );
 
+    rowSchemaTemplate["selisih"] = number().required();
+    rowSchemaTemplate["persentase"] = number().required();
+
     const rowSchema = object().shape(rowSchemaTemplate);
 
     const rowTargetSchema = object({
@@ -81,7 +84,7 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
 export const updateTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updateTaskSchema = object({
-      name: string().required(),
+      // name: string().required(),
       status: string<TaskStatus>().oneOf(Object.values(TaskStatus)),
     });
 

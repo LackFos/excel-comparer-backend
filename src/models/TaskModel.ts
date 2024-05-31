@@ -46,6 +46,7 @@ const taskSchema = new Schema<taskDocument>(
           config: ret.config,
           type: ret.excel.type,
           createdAt: ret.createdAt,
+          targetColumn: ret.targetColumn,
         };
       },
     },

@@ -26,6 +26,7 @@ export const filterDuplicate = (
 
   array.forEach((value, index) => {
     const rowIndex = index + countStart;
+
     if (productMap[value]) {
       productMap[value].push(rowIndex);
     } else {

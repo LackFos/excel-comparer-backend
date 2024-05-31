@@ -24,7 +24,7 @@ export const compareExcel = async (req: Request, res: Response) => {
 
     // 2) Find duplicated primary column in main file
     const mainDuplicates = filterDuplicate(
-      mainSheetRows.map((row) => row.sku_produk),
+      mainSheetRows.map((row) => row[chosenExcel.primaryColumn]),
       chosenExcel.startRowIndex
     );
 
@@ -60,7 +60,7 @@ export const compareExcel = async (req: Request, res: Response) => {
 
         // Find duplicated primary column in secondary file
         const secondaryDuplicates = filterDuplicate(
-          sheetRows.map((data) => data.sku_produk),
+          sheetRows.map((data) => data[chosenExcel.primaryColumn]),
           chosenExcel.startRowIndex
         );
 
@@ -76,9 +76,9 @@ export const compareExcel = async (req: Request, res: Response) => {
               if (mainDataMap.has(row[primaryKey])) {
                 const mainValue = Number(mainDataMap.get(row[primaryKey]).value);
                 const secondaryValue = Number(row[targetColumn]);
-                const difference = mainValue - secondaryValue;
-                const differencePercent = ((mainValue - secondaryValue) / mainValue) * 100;
-                return { ...row, difference, differencePercent };
+                const difference = secondaryValue - mainValue;
+                const differencePercent = ((secondaryValue - mainValue) / secondaryValue) * 100;
+                return { ...row, selisih: difference, persentase: differencePercent };
               }
             }
           })

@@ -10,24 +10,26 @@ import {
   readExcelBuffer,
 } from "../libs/helpers/excelHelper";
 import { CreateTaskParams, UpdateTaskParams } from "../libs/types";
-import { endOfDay, isValid, parseISO, startOfDay } from "date-fns";
+import { endOfDay, isValid, parseISO, startOfDay, sub } from "date-fns";
 
 export const getAllTask = async (req: Request, res: Response): Promise<void> => {
   const { startDate, endDate } = req.query;
 
   try {
-    const dateFilters: Record<string, Date> = {};
+    const dateFilters: Record<string, any> = {};
 
     if (startDate) {
-      dateFilters["$gte"] = startOfDay(startDate as string);
-      dateFilters["$lte"] = endOfDay(startDate as string);
+      dateFilters.createdAt = {
+        $gte: startOfDay(startDate as string),
+        $lte: endOfDay(startDate as string),
+      };
 
       if (endDate) {
-        dateFilters["$lte"] = endOfDay(endDate as string);
+        dateFilters.createdAt.$lte = endOfDay(endDate as string);
       }
     }
 
-    const tasks = await TaskModel.find({ createdAt: dateFilters }).populate("excel");
+    const tasks = await TaskModel.find(dateFilters).populate("excel");
 
     if (tasks.length === 0) {
       return responseHelper.throwNotFoundError("No tasks found", res);
@@ -114,22 +116,25 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
     if (!task) return responseHelper.throwNotFoundError("Task not found", res);
     if (!task.excel) return responseHelper.throwNotFoundError("Task related excel not found", res);
 
-    if (name) {
-      task.name = name;
-      await task.save({ validateBeforeSave: true });
-    }
+    // if (name) {
+    //   task.name = name;
+    //   await task.save({ validateBeforeSave: true });
+    // }
 
-    if (status) {
-      if (task.status === TaskStatus.DONE) {
-        return responseHelper.throwConflictError(
-          "Task is already concluded and cannot be changed",
-          res
-        );
-      } else {
-        task.status = status;
-        await task.save({ validateBeforeSave: true });
-      }
-    }
+    // if (status) {
+    //   if (task.status === TaskStatus.DONE) {
+    //     return responseHelper.throwConflictError(
+    //       "Task is already concluded and cannot be changed",
+    //       res
+    //     );
+    //   } else {
+    //     task.status = status;
+    //     await task.save({ validateBeforeSave: true });
+    //   }
+    // }
+
+    task.status = status;
+    await task.save({ validateBeforeSave: true });
 
     const excel = await readExcelFile(task.file!);
     const rows = getExcelSheetData(excel, "Sheet1", task.excel.columns, 2);
@@ -180,22 +185,29 @@ export const submitTask = async (req: Request, res: Response) => {
       productMap.set(row[primaryKey], row[task.targetColumn]);
     });
 
-    const remainingTasks = submissionSheetData.map((row: any) => {
-      const taskValue = productMap.get(row[primaryKey]);
-      const submissionValue = row[targetColumn];
+    const remainingTasks = submissionSheetData
+      .map((row: any) => {
+        const taskValue = productMap.get(row[primaryKey]);
+        const submissionValue = row[targetColumn];
 
-      if (taskValue === undefined) return null;
+        const difference = submissionValue - taskValue;
+        const differencePercent = ((submissionValue - taskValue) / submissionValue) * 100;
 
-      if (taskValue !== submissionValue) {
-        return { ...row, isModified: true };
-      }
+        if (taskValue === undefined) return undefined;
 
-      return row;
-    });
+        const task = { ...row, selisih: difference, persentase: differencePercent };
+
+        if (taskValue !== submissionValue) {
+          task.isModified = true;
+        }
+
+        return task;
+      })
+      .filter(Boolean);
 
     const taskDetail = {
       ...task.toJSON(),
-      columns: req.body.chosenExcel.columnLabels,
+      columns: task.excel.columnLabels,
       rows: remainingTasks,
     };
 

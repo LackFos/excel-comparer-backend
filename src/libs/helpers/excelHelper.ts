@@ -51,6 +51,30 @@ export const createTaskFile = (rows: {}[], filename: string): Promise<void> => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Sheet1");
 
+  const columnLabels = [
+    { name: "Kode Produk", filterButton: true },
+    { name: "Nama Produk", filterButton: true },
+    { name: "Kode Variasi", filterButton: true },
+    { name: "Name Variasi", filterButton: true },
+    { name: "SKU Induk", filterButton: true },
+    { name: "SKU", filterButton: true },
+    { name: "Harga", filterButton: true },
+    { name: "Stok", filterButton: true },
+    { name: "difference", filterButton: true },
+    { name: "differencePercent", filterButton: true },
+  ];
+
+  // const dataIndexes = new Set([
+  //   "kode_produk",
+  //   "nama_produk",
+  //   "kode_variasi",
+  //   "nama_variasi",
+  //   "sku_induk",
+  //   "sku_produk",
+  //   "harga",
+  //   "stok",
+  // ]);
+
   sheet.addTable({
     name: "Table1",
     ref: "A1",
@@ -59,17 +83,19 @@ export const createTaskFile = (rows: {}[], filename: string): Promise<void> => {
       theme: "TableStyleLight8",
       showRowStripes: true,
     },
-    columns: [
-      { name: "Kode Produk", filterButton: true },
-      { name: "Nama Produk", filterButton: true },
-      { name: "Kode Variasi", filterButton: true },
-      { name: "Name Variasi", filterButton: true },
-      { name: "SKU Induk", filterButton: true },
-      { name: "SKU", filterButton: true },
-      { name: "Harga", filterButton: true },
-      { name: "Stok", filterButton: true },
-    ],
-    rows: rows.map((row) => Object.values(row)),
+    columns: columnLabels,
+    rows: rows.map((row) => {
+      // const data = [];
+
+      // for (const [key, value] of Object.entries(row)) {
+      //   if (!dataIndexes.has(key)) continue;
+      //   data.push(value);
+      // }
+
+      // return data;
+
+      return Object.values(row);
+    }),
   });
 
   return workbook.xlsx.writeFile(filename);

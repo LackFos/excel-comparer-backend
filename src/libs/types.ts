@@ -10,7 +10,7 @@ export type CreateTaskParams = {
 
 export type UpdateTaskParams = {
   name?: string;
-  status?: TaskStatus;
+  status: TaskStatus;
 };
 
 export type compareExcelParams = {
