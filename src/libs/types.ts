@@ -3,6 +3,7 @@ import { TaskStatus } from "./enum";
 
 export type CreateTaskParams = {
   name: string;
+  type: string;
   rows: {}[];
   config: Record<any, string>;
   targetColumn: string;

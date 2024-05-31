@@ -11,6 +11,7 @@ import {
 } from "../libs/helpers/excelHelper";
 import { CreateTaskParams, UpdateTaskParams } from "../libs/types";
 import { endOfDay, isValid, parseISO, startOfDay, sub } from "date-fns";
+import { capitalizeWords } from "../libs/utils";
 
 export const getAllTask = async (req: Request, res: Response): Promise<void> => {
   const { startDate, endDate } = req.query;
@@ -74,18 +75,20 @@ export const getTaskdetail = async (req: Request, res: Response): Promise<void> 
 };
 
 export const createTask = async (req: Request, res: Response): Promise<void> => {
-  const { name, rows, config, targetColumn }: CreateTaskParams = req.body;
+  const { name, rows, type, config, targetColumn }: CreateTaskParams = req.body;
 
   try {
     const objectId = new mongoose.Types.ObjectId();
 
+    const taskName = capitalizeWords(`${name} ${type}`);
     const taskFilePath = `public/task/${objectId}.xlsx`;
     await createTaskFile(rows, taskFilePath);
 
     const createdTask = await TaskModel.create({
-      name,
+      name: taskName,
       config,
       targetColumn,
+      type,
       status: TaskStatus.PENDING,
       excel: req.body.chosenExcel.id,
       file: taskFilePath,
