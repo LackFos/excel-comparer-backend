@@ -19,8 +19,8 @@ export const filterDuplicate = (
   array: any[],
   countStart: number = 1
 ): {
-  column: string;
-  rowNumbers: number[];
+  value: string;
+  numbers: number[];
 }[] => {
   const productMap: { [key: string]: number[] } = {};
 
@@ -35,15 +35,15 @@ export const filterDuplicate = (
   });
 
   const result: {
-    column: any;
-    rowNumbers: number[];
+    value: any;
+    numbers: number[];
   }[] = [];
 
   for (const key in productMap) {
     if (productMap[key].length > 1) {
       result.push({
-        column: key,
-        rowNumbers: productMap[key],
+        value: key,
+        numbers: productMap[key],
       });
     }
   }

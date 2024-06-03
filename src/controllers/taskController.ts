@@ -187,7 +187,7 @@ export const submitTask = async (req: Request, res: Response) => {
       .map((row) => {
         if (
           !submissionDuplicates.find(
-            (duplicated) => duplicated.column === row[task.excel!.primaryColumn]
+            (duplicated) => duplicated.value === row[task.excel!.primaryColumn]
           )
         ) {
           const product = productMap.get(row[task.excel!.primaryColumn]);

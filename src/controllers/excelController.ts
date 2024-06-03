@@ -55,7 +55,7 @@ export const compareExcel = async (req: Request, res: Response) => {
           .map((row: any) => {
             if (
               !comparisonDuplicates.find(
-                (duplicated) => duplicated.column === row[chosenExcel.primaryColumn]
+                (duplicated) => duplicated.value === row[chosenExcel.primaryColumn]
               )
             ) {
               const mainData = mainProductMap.get(row[chosenExcel.primaryColumn]);
