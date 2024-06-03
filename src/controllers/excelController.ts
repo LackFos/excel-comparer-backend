@@ -1,97 +1,83 @@
 import { Request, Response } from "express";
 import { filterDuplicate } from "../libs/utils";
-import { compareExcelParams, findMissingSkuParams } from "../libs/types";
 import responseHelper from "../libs/helpers/responseHelper";
 import { getExcelSheetData, readExcelBuffer } from "../libs/helpers/excelHelper";
 
 export const compareExcel = async (req: Request, res: Response) => {
-  const files = req.files as Record<string, Express.Multer.File[]>;
-  const mainFile = files.mainFile[0];
-  const secondaryFiles = files.secondaryFiles;
-
-  const { targetColumn, chosenExcel }: compareExcelParams = req.body;
+  const { targetColumn, chosenExcel } = req.body;
+  const { mainFile, secondaryFiles } = req.files as Record<string, Express.Multer.File[]>;
 
   try {
-    // 1) Read main file
-    const primaryKey = chosenExcel.primaryColumn;
-    const mainExcel = await readExcelBuffer(mainFile.buffer);
-    const mainSheetRows = getExcelSheetData(
+    const mainExcel = await readExcelBuffer(mainFile[0].buffer);
+
+    const mainSheetData = getExcelSheetData(
       mainExcel,
       "Sheet1",
       chosenExcel.columns,
       chosenExcel.startRowIndex
     );
 
-    // 2) Find duplicated primary column in main file
     const mainDuplicates = filterDuplicate(
-      mainSheetRows.map((row) => row[chosenExcel.primaryColumn]),
+      mainSheetData.map((row) => row[chosenExcel.primaryColumn]),
       chosenExcel.startRowIndex
     );
 
-    // 3) Prepare object to store duplicated rows
-    const duplicatedRows = [
-      {
-        filename: mainFile.originalname,
-        rows: mainDuplicates,
-      },
-    ];
+    const duplicatedRows = [{ filename: mainFile[0].originalname, rows: mainDuplicates }];
 
-    // 4) Compare
-    const mainDataMap = new Map();
+    const mainProductMap = new Map(
+      mainSheetData.map((row, index) => [
+        row[chosenExcel.primaryColumn],
+        { value: row[targetColumn], rowNumber: index + chosenExcel.startRowIndex },
+      ])
+    );
 
-    // Mapping each product will be use in compare later
-    mainSheetRows.forEach((row, index) => {
-      if (!mainDuplicates.find((duplicated) => duplicated.column === row[primaryKey])) {
-        mainDataMap.set(row[primaryKey], { value: row[targetColumn], rowNumber: index });
-      }
-    });
-
-    // Compare each secondaryFile on mainFile
     const comparisonResults = await Promise.all(
       secondaryFiles.map(async (file) => {
-        const filename = file.originalname;
-        const excel = await readExcelBuffer(file.buffer);
-        const sheetRows = getExcelSheetData(
-          excel,
+        const { originalname, buffer } = file;
+
+        const comparisonExcel = await readExcelBuffer(buffer);
+
+        const comparisonSheetData = getExcelSheetData(
+          comparisonExcel,
           "Sheet1",
           chosenExcel.columns,
           chosenExcel.startRowIndex
         );
 
-        // Find duplicated primary column in secondary file
-        const secondaryDuplicates = filterDuplicate(
-          sheetRows.map((data) => data[chosenExcel.primaryColumn]),
+        const comparisonDuplicates = filterDuplicate(
+          comparisonSheetData.map((data) => data[chosenExcel.primaryColumn]),
           chosenExcel.startRowIndex
         );
 
-        duplicatedRows.push({
-          filename: file.originalname,
-          rows: secondaryDuplicates,
-        });
+        duplicatedRows.push({ filename: originalname, rows: comparisonDuplicates });
 
-        // Compare rows in secondary file with main file
-        const rows = sheetRows
+        const rows = comparisonSheetData
           .map((row: any) => {
-            if (!secondaryDuplicates.find((duplicated) => duplicated.column === row[primaryKey])) {
-              if (mainDataMap.has(row[primaryKey])) {
-                const mainValue = Number(mainDataMap.get(row[primaryKey]).value);
-                const secondaryValue = Number(row[targetColumn]);
-                const difference = secondaryValue - mainValue;
-                const differencePercent = ((secondaryValue - mainValue) / secondaryValue) * 100;
-                return { ...row, selisih: difference, persentase: differencePercent };
+            if (
+              !comparisonDuplicates.find(
+                (duplicated) => duplicated.column === row[chosenExcel.primaryColumn]
+              )
+            ) {
+              const mainData = mainProductMap.get(row[chosenExcel.primaryColumn]);
+              if (mainData) {
+                const { value: mainValue } = mainData;
+                const secondaryValue = row[targetColumn];
+
+                const difference = Number(secondaryValue) - Number(mainValue);
+                const differencePercent = (difference / Number(mainValue)) * 100;
+                return { ...row, difference, differencePercent };
               }
             }
           })
           .filter(Boolean);
-
-        return { filename, rows };
+        return { filename: originalname, rows };
       })
     );
 
     return responseHelper.returnOkResponse("Comparison successful", res, {
       columns: chosenExcel.columnLabels,
       results: comparisonResults,
-      duplicated: duplicatedRows,
+      duplicated: duplicatedRows.filter((item) => item.rows.length !== 0),
     });
   } catch (error) {
     return responseHelper.throwInternalError(
@@ -103,15 +89,14 @@ export const compareExcel = async (req: Request, res: Response) => {
 };
 
 export const findMissingSku = async (req: Request, res: Response) => {
-  const files = req.files as Record<string, Express.Multer.File[]>;
-  const mainFile = files.mainFile[0];
-  const secondaryFiles = files.secondaryFiles;
+  const { mainFile, secondaryFiles } = req.files as Record<string, Express.Multer.File[]>;
 
-  const { chosenExcel }: findMissingSkuParams = req.body;
+  const { chosenExcel } = req.body;
 
   try {
-    const mainExcel = await readExcelBuffer(mainFile.buffer);
-    const mainSheetRows = getExcelSheetData(
+    const mainExcel = await readExcelBuffer(mainFile[0].buffer);
+
+    const mainSheetData = getExcelSheetData(
       mainExcel,
       "Sheet1",
       chosenExcel.columns,
@@ -119,18 +104,18 @@ export const findMissingSku = async (req: Request, res: Response) => {
     );
 
     const mainDuplicates = filterDuplicate(
-      mainSheetRows.map((row) => row.sku_produk),
+      mainSheetData.map((row) => row.sku_produk),
       chosenExcel.startRowIndex
     );
 
     const duplicatedRows = [
       {
-        filename: mainFile.originalname,
+        filename: mainFile[0].originalname,
         rows: mainDuplicates,
       },
     ];
 
-    const results = await Promise.all(
+    const comparisonResults = await Promise.all(
       secondaryFiles.map(async (file) => {
         const skuMap = new Set();
         const excel = await readExcelBuffer(file.buffer);
@@ -145,17 +130,17 @@ export const findMissingSku = async (req: Request, res: Response) => {
           skuMap.add(row.sku_produk);
         });
 
-        const secondaryDuplicates = filterDuplicate(
+        const comparisonDuplicates = filterDuplicate(
           sheetRows.map((data) => data.sku_produk),
           chosenExcel.startRowIndex
         );
 
         duplicatedRows.push({
           filename: file.originalname,
-          rows: secondaryDuplicates,
+          rows: comparisonDuplicates,
         });
 
-        const missingSku = mainSheetRows.filter((row: any) => !skuMap.has(row.sku_produk));
+        const missingSku = mainSheetData.filter((row: any) => !skuMap.has(row.sku_produk));
 
         return { filename: file.originalname, rows: missingSku };
       })
@@ -163,8 +148,14 @@ export const findMissingSku = async (req: Request, res: Response) => {
 
     return responseHelper.returnOkResponse("Comparison successful", res, {
       columns: chosenExcel.columnLabels,
-      results,
-      duplicated: duplicatedRows,
+      results: comparisonResults,
+      duplicated: duplicatedRows.filter((item) => item.rows.length !== 0),
     });
-  } catch (error) {}
+  } catch (error) {
+    return responseHelper.throwInternalError(
+      "Something went wrong, please try again later.",
+      res,
+      error
+    );
+  }
 };

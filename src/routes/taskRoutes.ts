@@ -1,8 +1,8 @@
 import express from "express";
 import multer from "multer";
 import {
-  getAllTask,
-  getTaskdetail,
+  getAllTasks,
+  getTaskDetail,
   createTask,
   updateTask,
   submitTask,
@@ -22,12 +22,12 @@ router.post("/:id/submit", upload.single("file"), submitTaskRequest, submitTask)
 
 router
   .route("/")
-  .get(getAllTaskRequest, getAllTask) // GET all tasks
+  .get(getAllTaskRequest, getAllTasks) // GET all tasks
   .post(createTaskRequest, createTask); // POST a new task
 
 router
   .route("/:id")
-  .get(getTaskdetail) // GET single task
+  .get(getTaskDetail) // GET single task
   .patch(updateTaskRequest, updateTask); // PATCH update a task
 
 export default router;

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { Request, Response } from "express";
-import TaskModel from "../models/TaskModel";
+import { endOfDay, startOfDay, sub } from "date-fns";
 import { TaskStatus } from "../libs/enum";
 import responseHelper from "../libs/helpers/responseHelper";
 import {
@@ -9,170 +9,155 @@ import {
   getExcelSheetData,
   readExcelBuffer,
 } from "../libs/helpers/excelHelper";
-import { CreateTaskParams, UpdateTaskParams } from "../libs/types";
-import { endOfDay, isValid, parseISO, startOfDay, sub } from "date-fns";
-import { capitalizeWords } from "../libs/utils";
+import { capitalizeWords, filterDuplicate } from "../libs/utils";
+import TaskModel from "../models/TaskModel";
 
-export const getAllTask = async (req: Request, res: Response): Promise<void> => {
+export const getAllTasks = async (req: Request, res: Response): Promise<void> => {
   const { startDate, endDate } = req.query;
 
   try {
-    const dateFilters: Record<string, any> = {};
+    const filters: Record<string, any> = {};
 
     if (startDate) {
-      dateFilters.createdAt = {
-        $gte: startOfDay(startDate as string),
-        $lte: endOfDay(startDate as string),
+      filters.createdAt = {
+        $gte: startOfDay(String(startDate)),
+        $lte: endOfDay(String(endDate || startDate)),
       };
-
-      if (endDate) {
-        dateFilters.createdAt.$lte = endOfDay(endDate as string);
-      }
     }
 
-    const tasks = await TaskModel.find(dateFilters).populate("excel");
+    const tasks = await TaskModel.find(filters).populate("excel");
 
-    if (tasks.length === 0) {
-      return responseHelper.throwNotFoundError("No tasks found", res);
-    }
+    const message = tasks.length > 0 ? `Task found` : `No task found`;
 
-    return responseHelper.returnOkResponse("tasks found", res, tasks);
-  } catch (err) {
+    return responseHelper.returnOkResponse(message, res, tasks);
+  } catch (error) {
     return responseHelper.throwInternalError(
       "Something went wrong, please try again later.",
       res,
-      err
+      error
     );
   }
 };
 
-export const getTaskdetail = async (req: Request, res: Response): Promise<void> => {
+export const getTaskDetail = async (req: Request, res: Response): Promise<void> => {
   const taskId = req.params.id;
 
   try {
     const task = await TaskModel.findById(taskId).populate("excel");
 
-    if (!task) return responseHelper.throwNotFoundError("Task not found", res);
-    if (!task.excel) return responseHelper.throwNotFoundError("Task related excel not found", res);
+    if (!task || !task.excel) {
+      const errorMessage = task ? "Task related excel not found" : "Task not found";
+      return responseHelper.throwNotFoundError(errorMessage, res);
+    }
 
-    const excel = await readExcelFile(task.file!);
-    const rows = getExcelSheetData(excel, "Sheet1", task.excel.columns, 2);
+    const excelFile = await readExcelFile(task.file!);
+    const sheetData = getExcelSheetData(excelFile, "Sheet1", task.excel.columns, 2);
 
     const taskDetail = {
       ...task.toJSON(),
       columns: task.excel.columnLabels,
-      rows,
+      rows: sheetData,
     };
 
     return responseHelper.returnOkResponse("Task found", res, taskDetail);
-  } catch (err) {
+  } catch (error) {
     return responseHelper.throwInternalError(
       "Something went wrong, please try again later.",
       res,
-      err
+      error
     );
   }
 };
 
 export const createTask = async (req: Request, res: Response): Promise<void> => {
-  const { name, rows, type, config, targetColumn }: CreateTaskParams = req.body;
+  const { name, rows, type, config, targetColumn } = req.body;
+  const excelId = req.body.chosenExcel.id;
+  const columnLabels = req.body.chosenExcel.columnLabels;
 
   try {
-    const objectId = new mongoose.Types.ObjectId();
-
+    const taskId = new mongoose.Types.ObjectId();
     const taskName = capitalizeWords(`${name} ${type}`);
-    const taskFilePath = `public/task/${objectId}.xlsx`;
+    const taskFilePath = `public/task/${taskId}.xlsx`;
+
     await createTaskFile(rows, taskFilePath);
 
     const createdTask = await TaskModel.create({
+      _id: taskId,
       name: taskName,
       config,
       targetColumn,
       type,
       status: TaskStatus.PENDING,
-      excel: req.body.chosenExcel.id,
+      excel: excelId,
       file: taskFilePath,
     });
 
     const taskDetail = {
       ...createdTask.toJSON(),
-      columns: req.body.chosenExcel.columnLabels,
+      columns: columnLabels,
       rows,
     };
 
     return responseHelper.returnCreatedResponse("Task", taskDetail, res);
-  } catch (err) {
+  } catch (error) {
     return responseHelper.throwInternalError(
       "Something went wrong, please try again later.",
       res,
-      err
+      error
     );
   }
 };
 
 export const updateTask = async (req: Request, res: Response): Promise<void> => {
   const taskId = req.params.id;
-  const { name, status }: UpdateTaskParams = req.body;
+  const { name: taskName, status: taskStatus } = req.body;
 
   try {
     const task = await TaskModel.findById(taskId).populate("excel");
-    if (!task) return responseHelper.throwNotFoundError("Task not found", res);
-    if (!task.excel) return responseHelper.throwNotFoundError("Task related excel not found", res);
 
-    // if (name) {
-    //   task.name = name;
-    //   await task.save({ validateBeforeSave: true });
-    // }
+    if (!task || !task.excel) {
+      const errorMessage = task ? "Task related excel not found" : "Task not found";
+      return responseHelper.throwNotFoundError(errorMessage, res);
+    }
 
-    // if (status) {
-    //   if (task.status === TaskStatus.DONE) {
-    //     return responseHelper.throwConflictError(
-    //       "Task is already concluded and cannot be changed",
-    //       res
-    //     );
-    //   } else {
-    //     task.status = status;
-    //     await task.save({ validateBeforeSave: true });
-    //   }
-    // }
-
-    task.status = status;
+    task.status = taskStatus;
     await task.save({ validateBeforeSave: true });
 
-    const excel = await readExcelFile(task.file!);
-    const rows = getExcelSheetData(excel, "Sheet1", task.excel.columns, 2);
+    const excelFile = await readExcelFile(task.file!);
+    const sheetData = getExcelSheetData(excelFile, "Sheet1", task.excel.columns, 2);
 
     const taskDetail = {
       ...task.toJSON(),
       columns: task.excel.columnLabels,
-      rows,
+      rows: sheetData,
     };
 
     return responseHelper.returnOkResponse("Task successfully updated!", res, taskDetail);
-  } catch (err) {
+  } catch (error) {
     return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
+      "Something went wrong. Please try again later.",
       res,
-      err
+      error
     );
   }
 };
 
 export const submitTask = async (req: Request, res: Response) => {
   const taskId = req.params.id;
-  const file = req.file;
+  const submissionFile = req.file;
 
   try {
     const task = await TaskModel.findById(taskId).populate("excel");
 
-    if (!task) return responseHelper.throwNotFoundError("Task not found", res);
-    if (!task.excel) return responseHelper.throwNotFoundError("Task related excel not found", res);
+    if (!task || !task.excel) {
+      const errorMessage = task ? "Task related excel not found" : "Task not found";
+      return responseHelper.throwNotFoundError(errorMessage, res);
+    }
 
     const taskExcel = await readExcelFile(task.file);
-    const submissionExcel = await readExcelBuffer(file!.buffer);
+    const submissionExcel = await readExcelBuffer(submissionFile!.buffer);
 
     const taskSheetData = getExcelSheetData(taskExcel, "Sheet1", task.excel.columns, 2);
-
     const submissionSheetData = getExcelSheetData(
       submissionExcel,
       "Sheet1",
@@ -180,31 +165,46 @@ export const submitTask = async (req: Request, res: Response) => {
       task.excel.startRowIndex
     );
 
-    const productMap = new Map();
-    const targetColumn = task.targetColumn;
-    const primaryKey = task.excel.primaryColumn;
+    const submissionDuplicates = filterDuplicate(
+      submissionSheetData.map((row) => row[task.excel!.primaryColumn]),
+      task.excel!.startRowIndex
+    );
+
+    const productMap = new Map<string, { value: string; selisih: number; persentase: number }>();
 
     taskSheetData.forEach((row: any) => {
-      productMap.set(row[primaryKey], row[task.targetColumn]);
+      const productId = row[task.excel!.primaryColumn];
+      const { selisih, persentase } = row;
+
+      productMap.set(productId, {
+        value: row[task.targetColumn],
+        selisih: Number(selisih),
+        persentase: Number(persentase),
+      });
     });
 
     const remainingTasks = submissionSheetData
-      .map((row: any) => {
-        const taskValue = productMap.get(row[primaryKey]);
-        const submissionValue = row[targetColumn];
+      .map((row) => {
+        if (
+          !submissionDuplicates.find(
+            (duplicated) => duplicated.column === row[task.excel!.primaryColumn]
+          )
+        ) {
+          const product = productMap.get(row[task.excel!.primaryColumn]);
+          const submissionValue = row[task.targetColumn];
 
-        const difference = submissionValue - taskValue;
-        const differencePercent = ((submissionValue - taskValue) / submissionValue) * 100;
+          if (!product || product.value === undefined) {
+            return null;
+          }
 
-        if (taskValue === undefined) return undefined;
+          const item: any = { ...row, selisih: product.selisih, persentase: product.persentase };
 
-        const task = { ...row, selisih: difference, persentase: differencePercent };
+          if (product.value !== submissionValue) {
+            item.isModified = true;
+          }
 
-        if (taskValue !== submissionValue) {
-          task.isModified = true;
+          return item;
         }
-
-        return task;
       })
       .filter(Boolean);
 
@@ -212,6 +212,7 @@ export const submitTask = async (req: Request, res: Response) => {
       ...task.toJSON(),
       columns: task.excel.columnLabels,
       rows: remainingTasks,
+      duplicated: submissionDuplicates,
     };
 
     return responseHelper.returnOkResponse("Remaining Task", res, taskDetail);
