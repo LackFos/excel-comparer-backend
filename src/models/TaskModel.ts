@@ -36,20 +36,7 @@ const taskSchema = new Schema<taskDocument>(
   },
   {
     timestamps: true,
-    toJSON: {
-      virtuals: true,
-      transform: function (doc, ret) {
-        return {
-          id: ret._id,
-          name: ret.name,
-          status: ret.status,
-          config: ret.config,
-          type: ret.excel.type,
-          createdAt: ret.createdAt,
-          targetColumn: ret.targetColumn,
-        };
-      },
-    },
+    toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
 );

@@ -197,7 +197,12 @@ export const submitTask = async (req: Request, res: Response) => {
             return null;
           }
 
-          const item: any = { ...row, selisih: product.selisih, persentase: product.persentase };
+          const item: any = {
+            ...row,
+            selisih: product.selisih,
+            persentase: product.persentase,
+            sebelumnya: product.value,
+          };
 
           if (product.value !== submissionValue) {
             item.isModified = true;

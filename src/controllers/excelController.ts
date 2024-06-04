@@ -65,7 +65,7 @@ export const compareExcel = async (req: Request, res: Response) => {
 
                 const difference = Number(secondaryValue) - Number(mainValue);
                 const differencePercent = (difference / Number(mainValue)) * 100;
-                return { ...row, difference, differencePercent };
+                return { ...row, selisih: difference, persentase: differencePercent };
               }
             }
           })
