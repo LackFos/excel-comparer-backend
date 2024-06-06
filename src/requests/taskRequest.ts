@@ -31,8 +31,8 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
       config: array()
         .of(
           object({
-            start: number().required().required(),
-            end: number().required().required(),
+            start: string().required().required(),
+            end: string().required().required(),
             color: string()
               .required()
               .matches(/^#[0-9A-Fa-f]{6}$/, "config.color must be a valid hex code (e.g., #AABBCC)")

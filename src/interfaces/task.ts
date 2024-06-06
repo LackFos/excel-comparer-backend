@@ -9,8 +9,8 @@ export interface taskDocument {
   file: string;
   targetColumn: string;
   config: {
-    start: number;
-    end: number;
+    start: string;
+    end: string;
     color: string;
   }[];
   excel: PopulatedDoc<excelDocument & mongoose.Types.ObjectId>;

@@ -23,9 +23,9 @@ const taskSchema = new Schema<taskDocument>(
     },
     config: [
       {
+        start: { type: String, required: true },
+        end: { type: String, required: true },
         color: { type: String, required: true },
-        type: { type: String, required: true },
-        value: { type: Number, required: true },
       },
     ],
     excel: {
