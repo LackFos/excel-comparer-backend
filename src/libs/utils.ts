@@ -11,7 +11,7 @@ export const validateRequest = (
   return schema.validate(values, options);
 };
 
-export const checkExcelValidity = (file: Express.Multer.File): boolean => {
+export const isExcelFile = (file: Express.Multer.File): boolean => {
   return file.mimetype === xlsxFileMimetype;
 };
 

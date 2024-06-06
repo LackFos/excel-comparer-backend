@@ -185,31 +185,25 @@ export const submitTask = async (req: Request, res: Response) => {
 
     const remainingTasks = submissionSheetData
       .map((row) => {
-        if (
-          !submissionDuplicates.find(
-            (duplicated) => duplicated.value === row[task.excel!.primaryColumn]
-          )
-        ) {
-          const product = productMap.get(row[task.excel!.primaryColumn]);
-          const submissionValue = row[task.targetColumn];
+        const product = productMap.get(row[task.excel!.primaryColumn]);
+        const submissionValue = row[task.targetColumn];
 
-          if (!product || product.value === undefined) {
-            return null;
-          }
-
-          const item: any = {
-            ...row,
-            selisih: product.selisih,
-            persentase: product.persentase,
-            sebelumnya: product.value,
-          };
-
-          if (product.value !== submissionValue) {
-            item.isModified = true;
-          }
-
-          return item;
+        if (!product || product.value === undefined) {
+          return null;
         }
+
+        const item: any = {
+          ...row,
+          selisih: product.selisih,
+          persentase: product.persentase,
+          sebelumnya: product.value,
+        };
+
+        if (product.value !== submissionValue) {
+          item.isModified = true;
+        }
+
+        return item;
       })
       .filter(Boolean);
 

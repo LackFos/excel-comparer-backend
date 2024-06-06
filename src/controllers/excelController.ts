@@ -24,9 +24,9 @@ export const compareExcel = async (req: Request, res: Response) => {
 
     const duplicatedRows = [{ filename: mainFile[0].originalname, rows: mainDuplicates }];
 
-    const mainProductMap = new Map(
+    const productMap = new Map(
       mainSheetData.map((row, index) => [
-        row[chosenExcel.primaryColumn],
+        `${row[chosenExcel.primaryColumn]}-${row.kode_produk}`,
         { value: row[targetColumn], rowNumber: index + chosenExcel.startRowIndex },
       ])
     );
@@ -53,21 +53,25 @@ export const compareExcel = async (req: Request, res: Response) => {
 
         const rows = comparisonSheetData
           .map((row: any) => {
-            if (
-              !comparisonDuplicates.find(
-                (duplicated) => duplicated.value === row[chosenExcel.primaryColumn]
-              )
-            ) {
-              const mainData = mainProductMap.get(row[chosenExcel.primaryColumn]);
-              if (mainData) {
-                const { value: mainValue } = mainData;
-                const secondaryValue = row[targetColumn];
+            const productKey = `${row[chosenExcel.primaryColumn]}-${row.kode_produk}`;
+            const product = productMap.get(productKey);
+            const comparisonValue = row[targetColumn];
 
-                const difference = Number(secondaryValue) - Number(mainValue);
-                const differencePercent = (difference / Number(mainValue)) * 100;
-                return { ...row, selisih: difference, persentase: differencePercent };
-              }
+            if (!product || product.value === undefined) {
+              return null;
             }
+
+            const difference = Number(comparisonValue) - Number(product.value);
+            const differencePercentage = (difference / Number(product.value)) * 100;
+
+            const item: any = {
+              ...row,
+              sebelumnya: product.value,
+              selisih: difference,
+              persentase: differencePercentage,
+            };
+
+            return item;
           })
           .filter(Boolean);
         return { filename: originalname, rows };

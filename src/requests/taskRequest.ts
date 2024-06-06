@@ -1,10 +1,9 @@
 import { array, date, number, object, string } from "yup";
 import { Request, Response, NextFunction } from "express";
-import { ExcelOperator, TaskStatus } from "../libs/enum";
+import { TaskStatus } from "../libs/enum";
 import responseHelper from "../libs/helpers/responseHelper";
-import { checkExcelValidity, validateRequest } from "../libs/utils";
+import { isExcelFile, validateRequest } from "../libs/utils";
 import ExcelModel from "../models/ExcelModel";
-import { excelDocument } from "../interfaces/excel";
 
 export const getAllTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -23,56 +22,49 @@ export const getAllTaskRequest = async (req: Request, res: Response, next: NextF
 
 export const createTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    //  1) Check is name, type & config is valid
-    const excels: excelDocument[] = await ExcelModel.find();
-    const validTypes = excels.map((doc) => doc.type);
+    const excelDocuments = await ExcelModel.find();
+    const validTypes = excelDocuments.map((document) => document.type);
 
-    const nameTypeConfigSchema = object({
+    const taskSchema = object({
       name: string().required(),
       type: string().required().oneOf(validTypes),
-      config: array().of(
-        object({
-          color: string()
-            .required()
-            .test({
-              test: (value, context) => {
-                if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
-                  return context.createError({
-                    message: "config.color must be a valid hex code (e.g., #AABBCC),",
-                  });
-                }
-                return true;
-              },
-            }),
-          type: string().required().oneOf(Object.values(ExcelOperator)),
-          value: number().required(),
-        })
-      ),
+      config: array()
+        .of(
+          object({
+            start: number().required().required(),
+            end: number().required().required(),
+            color: string()
+              .required()
+              .matches(/^#[0-9A-Fa-f]{6}$/, "config.color must be a valid hex code (e.g., #AABBCC)")
+              .required(),
+          })
+        )
+        .required(),
     });
-    await validateRequest(nameTypeConfigSchema, req.body);
 
-    // 2) Check is rows & targetColumn is Valid
-    const chosenExcel = excels.find((excel) => excel.type === req.body.type)!;
+    const chosenExcel = excelDocuments.find((excel) => excel.type === req.body.type)!;
     req.body.chosenExcel = chosenExcel;
 
     const rowSchemaTemplate = chosenExcel.columns.reduce(
-      (schema: Record<string, any>, column: string) => {
-        schema[column] = string().notOneOf([undefined]);
-        return schema;
-      },
+      (schema, column) => ({
+        ...schema,
+        [column]: string().notOneOf([undefined]),
+      }),
       {}
     );
 
-    rowSchemaTemplate["selisih"] = number().required();
-    rowSchemaTemplate["persentase"] = number().required();
-
-    const rowSchema = object().shape(rowSchemaTemplate);
-
-    const rowTargetSchema = object({
-      rows: array().of(rowSchema).min(1),
-      targetColumn: string().required().oneOf(chosenExcel.filterableColumns),
+    const rowSchema = object({
+      ...rowSchemaTemplate,
+      selisih: number().required(),
+      persentase: number().required(),
     });
 
+    const rowTargetSchema = object({
+      rows: array().of(rowSchema).min(1).required(),
+      targetColumn: string().required().oneOf(chosenExcel.filterableColumns).required(),
+    });
+
+    await validateRequest(taskSchema, req.body);
     await validateRequest(rowTargetSchema, req.body);
 
     next();
@@ -83,12 +75,11 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
 
 export const updateTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const updateTaskSchema = object({
-      // name: string().required(),
-      status: string<TaskStatus>().oneOf(Object.values(TaskStatus)),
+    const taskSchema = object({
+      status: string().required().oneOf(Object.values(TaskStatus)),
     });
 
-    req.body = await validateRequest(updateTaskSchema, req.body);
+    req.body = await validateRequest(taskSchema, req.body);
 
     next();
   } catch (error) {
@@ -100,9 +91,9 @@ export const submitTaskRequest = async (req: Request, res: Response, next: NextF
   try {
     const file = req.file;
 
-    if (!file || !checkExcelValidity(file)) {
+    if (!file || !isExcelFile(file)) {
       return responseHelper.throwBadRequestError("Invalid request body", res, {
-        file: "file must be an xlsx file",
+        file: "File must be an XLSX file",
       });
     }
 

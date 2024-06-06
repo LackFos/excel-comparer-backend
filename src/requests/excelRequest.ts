@@ -1,6 +1,6 @@
 import { object, string } from "yup";
 import { Request, Response, NextFunction } from "express";
-import { checkExcelValidity, validateRequest } from "../libs/utils";
+import { isExcelFile, validateRequest } from "../libs/utils";
 import responseHelper from "../libs/helpers/responseHelper";
 import ExcelModel from "../models/ExcelModel";
 
@@ -29,13 +29,13 @@ export const compareExcelRequest = async (req: Request, res: Response, next: Nex
     const mainFile = files?.mainFile?.[0];
     const secondaryFiles = files?.secondaryFiles;
 
-    if (!mainFile || !checkExcelValidity(mainFile)) {
+    if (!mainFile || !isExcelFile(mainFile)) {
       return responseHelper.throwBadRequestError("Invalid request body", res, {
         mainFile: "mainFile must be an xlsx file",
       });
     }
 
-    if (!secondaryFiles || !secondaryFiles.every((file) => checkExcelValidity(file))) {
+    if (!secondaryFiles || !secondaryFiles.every((file) => isExcelFile(file))) {
       return responseHelper.throwBadRequestError("Invalid request body", res, {
         secondaryFiles: "secondaryFiles must be xlsx files",
       });
@@ -67,13 +67,13 @@ export const findMissingSkuRequest = async (req: Request, res: Response, next: N
     const mainFile = files?.mainFile?.[0];
     const secondaryFiles = files?.secondaryFiles;
 
-    if (!mainFile || !checkExcelValidity(mainFile)) {
+    if (!mainFile || !isExcelFile(mainFile)) {
       return responseHelper.throwBadRequestError("Invalid request body", res, {
         mainFile: "mainFile must be an xlsx file",
       });
     }
 
-    if (!secondaryFiles || !secondaryFiles.every((file) => checkExcelValidity(file))) {
+    if (!secondaryFiles || !secondaryFiles.every((file) => isExcelFile(file))) {
       return responseHelper.throwBadRequestError("Invalid request body", res, {
         secondaryFiles: "secondaryFiles must be xlsx files",
       });
