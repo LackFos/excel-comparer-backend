@@ -78,7 +78,8 @@ export const compareExcel = async (req: Request, res: Response) => {
       })
     );
 
-    return responseHelper.returnOkResponse("Comparison successful", res, {
+    return responseHelper.returnOkResponse("Comparison successfulaaa", res, {
+      excel: chosenExcel,
       columns: chosenExcel.columnLabels,
       results: comparisonResults,
       duplicated: duplicatedRows.filter((item) => item.rows.length !== 0),
@@ -151,6 +152,7 @@ export const findMissingSku = async (req: Request, res: Response) => {
     );
 
     return responseHelper.returnOkResponse("Comparison successful", res, {
+      excel: chosenExcel,
       columns: chosenExcel.columnLabels,
       results: comparisonResults,
       duplicated: duplicatedRows.filter((item) => item.rows.length !== 0),
