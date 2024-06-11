@@ -16,11 +16,11 @@ export const compareExcelRequest = async (req: Request, res: Response, next: Nex
     excelTypeSchema.validate(req.body); // validate
 
     //  2) Check is targetColumn valid
-    const chosenExcel = excels.find((excel) => excel.type === req.body.type)!;
-    req.body.chosenExcel = chosenExcel;
+    const selectedExcel = excels.find((excel) => excel.type === req.body.type)!;
+    req.body.selectedExcel = selectedExcel;
 
     const targetColumnSchema = object({
-      targetColumn: string().required().oneOf(chosenExcel.filterableColumns),
+      targetColumn: string().required().oneOf(selectedExcel.filterableColumns),
     });
     targetColumnSchema.validate(req.body); // validate
 
@@ -59,8 +59,8 @@ export const findMissingSkuRequest = async (req: Request, res: Response, next: N
     excelTypeSchema.validate(req.body);
 
     //  2) Check is targetColumn valid
-    const chosenExcel = excels.find((excel) => excel.type === req.body.type)!;
-    req.body.chosenExcel = chosenExcel;
+    const selectedExcel = excels.find((excel) => excel.type === req.body.type)!;
+    req.body.selectedExcel = selectedExcel;
 
     // 3) Check is mainFile & secondaryFiles is exists and valid
     const files = req.files as Record<string, Express.Multer.File[]>;
@@ -92,6 +92,8 @@ export const findActualPriceRequest = async (req: Request, res: Response, next: 
     if (!isExcelFile(mainFile[0]) || !isExcelFile(discountFile[0])) {
       return responseHelper.throwBadRequestError("Invalid file format", res);
     }
+
+    next();
   } catch (error) {
     next(error);
   }

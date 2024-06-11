@@ -7,11 +7,11 @@ import ExcelModel from "../models/ExcelModel";
 
 export const getAllTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const dateParamsSchema = object({
+    const dateRangeSchema = object({
       startDate: date(),
       endDate: date(),
     });
-    await validateRequest(dateParamsSchema, req.query); // Validate
+    await validateRequest(dateRangeSchema, req.query); // Validate
 
     next();
   } catch (error) {
@@ -42,10 +42,10 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
     });
     await validateRequest(taskSchema, req.body); // Validate
 
-    const chosenExcel = excelDocuments.find((excel) => excel.type === req.body.type)!;
-    req.body.chosenExcel = chosenExcel;
+    const selectedExcel = excelDocuments.find((excel) => excel.type === req.body.type)!;
+    req.body.selectedExcel = selectedExcel;
 
-    const rowSchemaTemplate = chosenExcel.columns.reduce(
+    const rowSchemaTemplate = selectedExcel.columns.reduce(
       (schema, column) => ({
         ...schema,
         [column]: string().notOneOf([undefined]),
@@ -61,7 +61,7 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
 
     const rowTargetSchema = object({
       rows: array().of(rowSchema).min(1).required(),
-      targetColumn: string().required().oneOf(chosenExcel.filterableColumns).required(),
+      targetColumn: string().required().oneOf(selectedExcel.filterableColumns).required(),
     });
     await validateRequest(rowTargetSchema, req.body); // Validate
 
@@ -73,10 +73,10 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
 
 export const updateTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const taskSchema = object({
+    const updateSchema = object({
       status: string().required().oneOf(Object.values(TaskStatus)),
     });
-    await validateRequest(taskSchema, req.body); // Validate
+    await validateRequest(updateSchema, req.body); // Validate
 
     next();
   } catch (error) {
@@ -86,12 +86,10 @@ export const updateTaskRequest = async (req: Request, res: Response, next: NextF
 
 export const submitTaskRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const file = req.file;
+    const uploadedFile = req.file;
 
-    if (!file || !isExcelFile(file)) {
-      return responseHelper.throwBadRequestError("Invalid request body", res, {
-        file: "File must be an XLSX file",
-      });
+    if (!uploadedFile || !isExcelFile(uploadedFile)) {
+      return responseHelper.throwBadRequestError("Invalid file format", res);
     }
 
     next();

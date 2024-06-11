@@ -1,9 +1,9 @@
+import mongoose from "mongoose";
 import { Request, Response } from "express";
 import { filterDuplicate } from "../libs/utils";
 import responseHelper from "../libs/helpers/responseHelper";
 import { createExcelWorkbook, getExcelSheetData } from "../libs/helpers/excelHelper";
 import ExcelModel from "../models/ExcelModel";
-import mongoose from "mongoose";
 
 export const getAllExcels = async (req: Request, res: Response) => {
   try {
@@ -22,30 +22,33 @@ export const getAllExcels = async (req: Request, res: Response) => {
 };
 
 export const compareExcel = async (req: Request, res: Response) => {
-  const { targetColumn, chosenExcel } = req.body;
+  const { targetColumn, selectedExcel } = req.body;
   const { mainFile, secondaryFiles } = req.files as Record<string, Express.Multer.File[]>;
 
   try {
     const mainSheet = await getExcelSheetData(
       mainFile[0].buffer,
       "Sheet1",
-      chosenExcel.columns,
-      chosenExcel.startRowIndex
+      selectedExcel.columns,
+      selectedExcel.startRowIndex
     );
 
-    const duplicatedRows: { filename: string; rows: { value: string; numbers: number[] }[] }[] = [];
+    const duplicatedRows: { filename: string; rows: { value: string; rowNumbers: number[] }[] }[] =
+      [];
 
     const mainDuplicates = filterDuplicate(
-      mainSheet.map((row) => row[chosenExcel.primaryColumn]),
-      chosenExcel.startRowIndex
+      mainSheet.map((row) => row[selectedExcel.primaryColumn]),
+      selectedExcel.startRowIndex
     );
 
-    duplicatedRows.push({ filename: mainFile[0].originalname, rows: mainDuplicates });
+    if (mainDuplicates.length > 0) {
+      duplicatedRows.push({ filename: mainFile[0].originalname, rows: mainDuplicates });
+    }
 
     const productMap = new Map(
       mainSheet.map((row, index) => [
-        row[chosenExcel.primaryColumn],
-        { value: row[targetColumn], rowNumber: index + chosenExcel.startRowIndex },
+        row[selectedExcel.primaryColumn],
+        { value: row[targetColumn], rowNumber: index + selectedExcel.startRowIndex },
       ])
     );
 
@@ -56,20 +59,22 @@ export const compareExcel = async (req: Request, res: Response) => {
         const comparisonSheet = await getExcelSheetData(
           buffer,
           "Sheet1",
-          chosenExcel.columns,
-          chosenExcel.startRowIndex
+          selectedExcel.columns,
+          selectedExcel.startRowIndex
         );
 
         const comparisonDuplicates = filterDuplicate(
-          comparisonSheet.map((data) => data[chosenExcel.primaryColumn]),
-          chosenExcel.startRowIndex
+          comparisonSheet.map((data) => data[selectedExcel.primaryColumn]),
+          selectedExcel.startRowIndex
         );
 
-        duplicatedRows.push({ filename: originalname, rows: comparisonDuplicates });
+        if (comparisonDuplicates.length > 0) {
+          duplicatedRows.push({ filename: originalname, rows: comparisonDuplicates });
+        }
 
         const rows = comparisonSheet
           .map((row: any) => {
-            const productKey = row[chosenExcel.primaryColumn];
+            const productKey = row[selectedExcel.primaryColumn];
             const product = productMap.get(productKey);
             const comparisonValue = row[targetColumn];
 
@@ -94,11 +99,11 @@ export const compareExcel = async (req: Request, res: Response) => {
       })
     );
 
-    return responseHelper.returnOkResponse("Comparison successfulaaa", res, {
-      excel: chosenExcel,
-      columns: chosenExcel.columnLabels,
+    return responseHelper.returnOkResponse("Comparison successful", res, {
+      excel: selectedExcel,
+      columns: selectedExcel.columnLabels,
       results: comparisonResults,
-      duplicated: duplicatedRows.filter((item) => item.rows.length !== 0),
+      duplicated: duplicatedRows,
     });
   } catch (error) {
     return responseHelper.throwInternalError(
@@ -111,28 +116,27 @@ export const compareExcel = async (req: Request, res: Response) => {
 
 export const findMissingSku = async (req: Request, res: Response) => {
   const { mainFile, secondaryFiles } = req.files as Record<string, Express.Multer.File[]>;
-
-  const { chosenExcel } = req.body;
+  const selectedExcel = req.body.selectedExcel;
 
   try {
     const mainSheet = await getExcelSheetData(
       mainFile[0].buffer,
       "Sheet1",
-      chosenExcel.columns,
-      chosenExcel.startRowIndex
+      selectedExcel.columns,
+      selectedExcel.startRowIndex
     );
+
+    const duplicatedRows: { filename: string; rows: { value: string; rowNumbers: number[] }[] }[] =
+      [];
 
     const mainDuplicates = filterDuplicate(
-      mainSheet.map((row) => row.sku_produk),
-      chosenExcel.startRowIndex
+      mainSheet.map((row) => row[selectedExcel.primaryColumn]),
+      selectedExcel.startRowIndex
     );
 
-    const duplicatedRows = [
-      {
-        filename: mainFile[0].originalname,
-        rows: mainDuplicates,
-      },
-    ];
+    if (mainDuplicates.length > 0) {
+      duplicatedRows.push({ filename: mainFile[0].originalname, rows: mainDuplicates });
+    }
 
     const comparisonResults = await Promise.all(
       secondaryFiles.map(async (file) => {
@@ -141,8 +145,8 @@ export const findMissingSku = async (req: Request, res: Response) => {
         const sheet = await getExcelSheetData(
           file.buffer,
           "Sheet1",
-          chosenExcel.columns,
-          chosenExcel.startRowIndex
+          selectedExcel.columns,
+          selectedExcel.startRowIndex
         );
 
         sheet.forEach((row) => {
@@ -151,13 +155,12 @@ export const findMissingSku = async (req: Request, res: Response) => {
 
         const comparisonDuplicates = filterDuplicate(
           sheet.map((data) => data.sku_produk),
-          chosenExcel.startRowIndex
+          selectedExcel.startRowIndex
         );
 
-        duplicatedRows.push({
-          filename: file.originalname,
-          rows: comparisonDuplicates,
-        });
+        if (comparisonDuplicates.length > 0) {
+          duplicatedRows.push({ filename: file.originalname, rows: comparisonDuplicates });
+        }
 
         const missingSku = sheet.filter((row: any) => !skuMap.has(row.sku_produk));
 
@@ -166,8 +169,7 @@ export const findMissingSku = async (req: Request, res: Response) => {
     );
 
     return responseHelper.returnOkResponse("Comparison successful", res, {
-      excel: chosenExcel,
-      columns: chosenExcel.columnLabels,
+      excel: selectedExcel,
       results: comparisonResults,
       duplicated: duplicatedRows.filter((item) => item.rows.length !== 0),
     });
@@ -184,13 +186,13 @@ export const findActualPrice = async (req: Request, res: Response) => {
   const { mainFile, discountFile } = req.files as Record<string, Express.Multer.File[]>;
 
   try {
-    const chosenExcel = await ExcelModel.findOne({ type: "shopee_product" });
+    const selectedExcel = await ExcelModel.findOne({ type: "shopee_product" });
 
     const mainSheet = await getExcelSheetData(
       mainFile[0].buffer,
       "Sheet1",
-      chosenExcel!.columns,
-      chosenExcel!.startRowIndex
+      selectedExcel!.columns,
+      selectedExcel!.startRowIndex
     );
 
     const discountSheet = await getExcelSheetData(
@@ -210,15 +212,11 @@ export const findActualPrice = async (req: Request, res: Response) => {
     );
 
     const discountedPriceMap = new Map(
-      discountSheet.map((row) => [row[chosenExcel!.primaryColumn], row.harga_diskon])
+      discountSheet.map((row) => [row[selectedExcel!.primaryColumn], row.harga_diskon])
     );
 
-    discountedPriceMap.forEach((row, key) => {
-      if (key.startsWith("NOSKU")) console.log(key, row);
-    });
-
     const updatedRows = mainSheet.map((row) => {
-      const discountedPrice = discountedPriceMap.get(row[chosenExcel!.primaryColumn]);
+      const discountedPrice = discountedPriceMap.get(row[selectedExcel!.primaryColumn]);
       if (discountedPrice) {
         row.harga = discountedPrice;
       }
@@ -227,7 +225,7 @@ export const findActualPrice = async (req: Request, res: Response) => {
 
     const uniqueId = new mongoose.Types.ObjectId();
     const updatedFilePath = `public/downloads/${uniqueId}.xlsx`;
-    const updatedFileWorkbook = createExcelWorkbook(chosenExcel!.columnLabels, updatedRows);
+    const updatedFileWorkbook = createExcelWorkbook(selectedExcel!.columnLabels, updatedRows);
     updatedFileWorkbook.xlsx.writeFile(updatedFilePath);
 
     return responseHelper.returnOkResponse("Comparison successful", res, {
