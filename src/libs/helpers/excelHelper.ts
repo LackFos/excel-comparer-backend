@@ -3,8 +3,7 @@ import { excelDocument } from "../../interfaces/excel";
 
 export const getExcelSheetData = async (
   data: string | Buffer,
-  sheetName: string,
-  columns: string[],
+  columns: { key: string; label: string }[],
   startRowIndex: number
 ) => {
   let workbook = new ExcelJS.Workbook();
@@ -15,11 +14,11 @@ export const getExcelSheetData = async (
     await workbook.xlsx.load(data);
   }
 
-  const worksheet = workbook.getWorksheet(sheetName);
+  const worksheet = workbook.getWorksheet("Sheet1");
 
   const rowTemplate: Record<string, string> = {};
   columns.forEach((column) => {
-    rowTemplate[column] = "";
+    rowTemplate[column.key] = "";
   });
 
   const sheetData: Record<string, string>[] = [];
@@ -30,12 +29,12 @@ export const getExcelSheetData = async (
     const rowData = { ...rowTemplate };
 
     columns.forEach((column) => {
-      rowData[column] = "";
+      rowData[column.key] = "";
     });
 
     row.eachCell((cell, cellNumber) => {
       if (!columns[cellNumber - 1]) return;
-      const columnKey = columns[cellNumber - 1];
+      const columnKey = columns[cellNumber - 1].key;
       if (columnKey) rowData[columnKey] = cell.value?.toString() ?? "";
     });
 
@@ -45,11 +44,14 @@ export const getExcelSheetData = async (
   return sheetData;
 };
 
-export const createExcelWorkbook = (columns: string[], rows: {}[]): Workbook => {
+export const createExcelWorkbook = (
+  columns: { key: string; label: string }[],
+  rows: {}[]
+): Workbook => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Sheet1");
 
-  const columnLabels = columns.map((column) => ({ name: column, filterButton: true }));
+  const columnLabels = columns.map((column) => ({ name: column.label, filterButton: true }));
 
   sheet.addTable({
     name: "Table1",

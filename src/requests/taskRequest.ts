@@ -48,7 +48,7 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
     const rowSchemaTemplate = selectedExcel.columns.reduce(
       (schema, column) => ({
         ...schema,
-        [column]: string().notOneOf([undefined]),
+        [column.key]: string().notOneOf([undefined]),
       }),
       {}
     );

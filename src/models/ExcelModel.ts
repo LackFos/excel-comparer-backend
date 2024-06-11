@@ -7,16 +7,16 @@ export const excelSchema = new Schema<excelDocument>(
       type: String,
       required: true,
     },
+    name: {
+      type: String,
+      required: true,
+    },
     primaryColumn: {
       type: String,
       required: true,
     },
     columns: {
-      type: [String],
-      required: true,
-    },
-    columnLabels: {
-      type: [String],
+      type: [{ key: { type: String, required: true }, label: { type: String, required: true } }],
       required: true,
     },
     filterableColumns: {

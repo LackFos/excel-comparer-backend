@@ -28,7 +28,6 @@ export const compareExcel = async (req: Request, res: Response) => {
   try {
     const mainSheet = await getExcelSheetData(
       mainFile[0].buffer,
-      "Sheet1",
       selectedExcel.columns,
       selectedExcel.startRowIndex
     );
@@ -58,7 +57,6 @@ export const compareExcel = async (req: Request, res: Response) => {
 
         const comparisonSheet = await getExcelSheetData(
           buffer,
-          "Sheet1",
           selectedExcel.columns,
           selectedExcel.startRowIndex
         );
@@ -121,7 +119,6 @@ export const findMissingSku = async (req: Request, res: Response) => {
   try {
     const mainSheet = await getExcelSheetData(
       mainFile[0].buffer,
-      "Sheet1",
       selectedExcel.columns,
       selectedExcel.startRowIndex
     );
@@ -144,7 +141,6 @@ export const findMissingSku = async (req: Request, res: Response) => {
 
         const sheet = await getExcelSheetData(
           file.buffer,
-          "Sheet1",
           selectedExcel.columns,
           selectedExcel.startRowIndex
         );
@@ -190,23 +186,21 @@ export const findActualPrice = async (req: Request, res: Response) => {
 
     const mainSheet = await getExcelSheetData(
       mainFile[0].buffer,
-      "Sheet1",
       selectedExcel!.columns,
       selectedExcel!.startRowIndex
     );
 
     const discountSheet = await getExcelSheetData(
       discountFile[0].buffer,
-      "Sheet1",
       [
-        "kode_produk",
-        "nama_produk",
-        "sku_induk",
-        "kode_variasi",
-        "nama_variasi",
-        "sku_produk",
-        "harga",
-        "harga_diskon",
+        { key: "kode_produk", label: "Kode Produk" },
+        { key: "nama_produk", label: "Nama Produk" },
+        { key: "sku_induk", label: "Sku Induk" },
+        { key: "kode_variasi", label: "Kode Variasi" },
+        { key: "nama_variasi", label: "Nama Variasi" },
+        { key: "sku_produk", label: "Sku Produk" },
+        { key: "harga", label: "Harga" },
+        { key: "harga_diskon", label: "Harga Diskon" },
       ],
       2
     );
@@ -225,7 +219,7 @@ export const findActualPrice = async (req: Request, res: Response) => {
 
     const uniqueId = new mongoose.Types.ObjectId();
     const updatedFilePath = `public/downloads/${uniqueId}.xlsx`;
-    const updatedFileWorkbook = createExcelWorkbook(selectedExcel!.columnLabels, updatedRows);
+    const updatedFileWorkbook = createExcelWorkbook(selectedExcel!.columns, updatedRows);
     updatedFileWorkbook.xlsx.writeFile(updatedFilePath);
 
     return responseHelper.returnOkResponse("Comparison successful", res, {

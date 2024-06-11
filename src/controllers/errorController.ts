@@ -5,7 +5,6 @@ import { ValidationError } from "yup";
 
 const handleValidationError = (error: ValidationError, res: Response) => {
   let errors: Record<string, string> = {};
-  console.log(error);
 
   error.inner.forEach((error) => {
     if (error.path) {
