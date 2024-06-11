@@ -1,10 +1,11 @@
 import { MulterError } from "multer";
-import { ValidationError } from "yup";
 import { NextFunction, Request, Response } from "express";
 import responseHelper from "../libs/helpers/responseHelper";
+import { ValidationError } from "yup";
 
 const handleValidationError = (error: ValidationError, res: Response) => {
   let errors: Record<string, string> = {};
+  console.log(error);
 
   error.inner.forEach((error) => {
     if (error.path) {
@@ -22,8 +23,7 @@ const handleMulterError = (error: MulterError, res: Response) => {
         `Invalid request body: unexpected file upload`,
         res,
         {
-          [error.field]:
-            "This field does not accept files or only a single file is allowed.",
+          [error.field]: "This field does not accept files or only a single file is allowed.",
         }
       );
     }
@@ -32,12 +32,7 @@ const handleMulterError = (error: MulterError, res: Response) => {
   }
 };
 
-const ErrorHandler = (
-  err: any,
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+const ErrorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
   if (err.name === "ValidationError") return handleValidationError(err, res);
   if (err.name === "MulterError") return handleMulterError(err, res);
 };

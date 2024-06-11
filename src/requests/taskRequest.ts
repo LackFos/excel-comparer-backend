@@ -11,8 +11,7 @@ export const getAllTaskRequest = async (req: Request, res: Response, next: NextF
       startDate: date(),
       endDate: date(),
     });
-
-    await validateRequest(dateParamsSchema, req.query);
+    await validateRequest(dateParamsSchema, req.query); // Validate
 
     next();
   } catch (error) {
@@ -41,6 +40,7 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
         )
         .required(),
     });
+    await validateRequest(taskSchema, req.body); // Validate
 
     const chosenExcel = excelDocuments.find((excel) => excel.type === req.body.type)!;
     req.body.chosenExcel = chosenExcel;
@@ -63,9 +63,7 @@ export const createTaskRequest = async (req: Request, res: Response, next: NextF
       rows: array().of(rowSchema).min(1).required(),
       targetColumn: string().required().oneOf(chosenExcel.filterableColumns).required(),
     });
-
-    await validateRequest(taskSchema, req.body);
-    await validateRequest(rowTargetSchema, req.body);
+    await validateRequest(rowTargetSchema, req.body); // Validate
 
     next();
   } catch (error) {
@@ -78,8 +76,7 @@ export const updateTaskRequest = async (req: Request, res: Response, next: NextF
     const taskSchema = object({
       status: string().required().oneOf(Object.values(TaskStatus)),
     });
-
-    req.body = await validateRequest(taskSchema, req.body);
+    await validateRequest(taskSchema, req.body); // Validate
 
     next();
   } catch (error) {

@@ -12,7 +12,7 @@ export const validateRequest = (
 };
 
 export const isExcelFile = (file: Express.Multer.File): boolean => {
-  return file.mimetype === xlsxFileMimetype;
+  return file && file.mimetype === xlsxFileMimetype;
 };
 
 export const filterDuplicate = (

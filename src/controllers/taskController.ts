@@ -1,14 +1,9 @@
 import mongoose from "mongoose";
 import { Request, Response } from "express";
-import { endOfDay, startOfDay, sub } from "date-fns";
+import { endOfDay, startOfDay } from "date-fns";
 import { TaskStatus } from "../libs/enum";
 import responseHelper from "../libs/helpers/responseHelper";
-import {
-  createTaskFile,
-  readExcelFile,
-  getExcelSheetData,
-  readExcelBuffer,
-} from "../libs/helpers/excelHelper";
+import { createExcelWorkbook, getExcelSheetData } from "../libs/helpers/excelHelper";
 import { capitalizeWords, filterDuplicate } from "../libs/utils";
 import TaskModel from "../models/TaskModel";
 
@@ -16,16 +11,16 @@ export const getAllTasks = async (req: Request, res: Response): Promise<void> =>
   const { startDate, endDate } = req.query;
 
   try {
-    const filters: Record<string, any> = {};
+    const dateFilters: Record<string, any> = {};
 
     if (startDate) {
-      filters.createdAt = {
+      dateFilters.createdAt = {
         $gte: startOfDay(String(startDate)),
         $lte: endOfDay(String(endDate || startDate)),
       };
     }
 
-    const tasks = await TaskModel.find(filters).populate("excel");
+    const tasks = await TaskModel.find(dateFilters).populate("excel");
 
     const message = tasks.length > 0 ? `Task found` : `No task found`;
 
@@ -50,13 +45,12 @@ export const getTaskDetail = async (req: Request, res: Response): Promise<void> 
       return responseHelper.throwNotFoundError(errorMessage, res);
     }
 
-    const excelFile = await readExcelFile(task.file!);
-    const sheetData = getExcelSheetData(excelFile, "Sheet1", task.excel.columns, 2);
+    const taskSheet = await getExcelSheetData(task.file, "Sheet1", task.excel.columns, 2);
 
     const taskDetail = {
       ...task.toJSON(),
       columns: task.excel.columnLabels,
-      rows: sheetData,
+      rows: taskSheet,
     };
 
     return responseHelper.returnOkResponse("Task found", res, taskDetail);
@@ -71,15 +65,15 @@ export const getTaskDetail = async (req: Request, res: Response): Promise<void> 
 
 export const createTask = async (req: Request, res: Response): Promise<void> => {
   const { name, rows, type, config, targetColumn } = req.body;
-  const excelId = req.body.chosenExcel.id;
-  const columnLabels = req.body.chosenExcel.columnLabels;
+  const chosenExcel = req.body.chosenExcel;
 
   try {
     const taskId = new mongoose.Types.ObjectId();
-    const taskName = capitalizeWords(`${name} ${type}`);
-    const taskFilePath = `public/task/${taskId}.xlsx`;
 
-    await createTaskFile(rows, taskFilePath);
+    const taskName = capitalizeWords(`${name} ${type}`);
+    const taskFilePath = `public/tasks/${taskId}.xlsx`;
+    const taskWorkbook = createExcelWorkbook(chosenExcel.columnLabels, rows);
+    taskWorkbook.xlsx.writeFile(taskFilePath);
 
     const createdTask = await TaskModel.create({
       _id: taskId,
@@ -88,13 +82,13 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
       targetColumn,
       type,
       status: TaskStatus.PENDING,
-      excel: excelId,
+      excel: chosenExcel.id,
       file: taskFilePath,
     });
 
     const taskDetail = {
       ...createdTask.toJSON(),
-      columns: columnLabels,
+      columns: chosenExcel.columnLabels,
       rows,
     };
 
@@ -110,7 +104,7 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
 
 export const updateTask = async (req: Request, res: Response): Promise<void> => {
   const taskId = req.params.id;
-  const { name: taskName, status: taskStatus } = req.body;
+  const { status: taskStatus } = req.body;
 
   try {
     const task = await TaskModel.findById(taskId).populate("excel");
@@ -123,13 +117,12 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
     task.status = taskStatus;
     await task.save({ validateBeforeSave: true });
 
-    const excelFile = await readExcelFile(task.file!);
-    const sheetData = getExcelSheetData(excelFile, "Sheet1", task.excel.columns, 2);
+    const taskSheet = await getExcelSheetData(task.file, "Sheet1", task.excel.columns, 2);
 
     const taskDetail = {
       ...task.toJSON(),
       columns: task.excel.columnLabels,
-      rows: sheetData,
+      rows: taskSheet,
     };
 
     return responseHelper.returnOkResponse("Task successfully updated!", res, taskDetail);
@@ -154,25 +147,22 @@ export const submitTask = async (req: Request, res: Response) => {
       return responseHelper.throwNotFoundError(errorMessage, res);
     }
 
-    const taskExcel = await readExcelFile(task.file);
-    const submissionExcel = await readExcelBuffer(submissionFile!.buffer);
-
-    const taskSheetData = getExcelSheetData(taskExcel, "Sheet1", task.excel.columns, 2);
-    const submissionSheetData = getExcelSheetData(
-      submissionExcel,
+    const taskSheet = await getExcelSheetData(task.file, "Sheet1", task.excel.columns, 2);
+    const submissionSheet = await getExcelSheetData(
+      submissionFile!.buffer,
       "Sheet1",
       task.excel.columns,
       task.excel.startRowIndex
     );
 
     const submissionDuplicates = filterDuplicate(
-      submissionSheetData.map((row) => row[task.excel!.primaryColumn]),
+      submissionSheet.map((row) => row[task.excel!.primaryColumn]),
       task.excel!.startRowIndex
     );
 
     const productMap = new Map<string, { value: string; selisih: number; persentase: number }>();
 
-    taskSheetData.forEach((row: any) => {
+    taskSheet.forEach((row: any) => {
       const productId = row[task.excel!.primaryColumn];
       const { selisih, persentase } = row;
 
@@ -183,7 +173,7 @@ export const submitTask = async (req: Request, res: Response) => {
       });
     });
 
-    const remainingTasks = submissionSheetData
+    const remainingTasks = submissionSheet
       .map((row) => {
         const product = productMap.get(row[task.excel!.primaryColumn]);
         const submissionValue = row[task.targetColumn];

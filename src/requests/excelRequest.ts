@@ -1,6 +1,6 @@
 import { object, string } from "yup";
 import { Request, Response, NextFunction } from "express";
-import { isExcelFile, validateRequest } from "../libs/utils";
+import { isExcelFile } from "../libs/utils";
 import responseHelper from "../libs/helpers/responseHelper";
 import ExcelModel from "../models/ExcelModel";
 
@@ -10,19 +10,19 @@ export const compareExcelRequest = async (req: Request, res: Response, next: Nex
     const excels = await ExcelModel.find();
     const validTypes = excels.map((excel) => excel.type);
 
-    const validExcelType = object({
+    const excelTypeSchema = object({
       type: string().required().oneOf(validTypes),
     });
-    await validateRequest(validExcelType, req.body);
+    excelTypeSchema.validate(req.body); // validate
 
     //  2) Check is targetColumn valid
     const chosenExcel = excels.find((excel) => excel.type === req.body.type)!;
     req.body.chosenExcel = chosenExcel;
 
-    const validTargetColumn = object({
+    const targetColumnSchema = object({
       targetColumn: string().required().oneOf(chosenExcel.filterableColumns),
     });
-    await validateRequest(validTargetColumn, req.body);
+    targetColumnSchema.validate(req.body); // validate
 
     // 3) Check is mainFile & secondaryFiles is exists and valid
     const files = req.files as Record<string, Express.Multer.File[]>;
@@ -53,10 +53,10 @@ export const findMissingSkuRequest = async (req: Request, res: Response, next: N
     const excels = await ExcelModel.find({ type: { $regex: "_product$" } });
     const validTypes = excels.map((excel) => excel.type);
 
-    const validExcelType = object({
+    const excelTypeSchema = object({
       type: string().required().oneOf(validTypes),
     });
-    await validateRequest(validExcelType, req.body);
+    excelTypeSchema.validate(req.body);
 
     //  2) Check is targetColumn valid
     const chosenExcel = excels.find((excel) => excel.type === req.body.type)!;
@@ -80,6 +80,18 @@ export const findMissingSkuRequest = async (req: Request, res: Response, next: N
     }
 
     next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const findActualPriceRequest = async (req: Request, res: Response, next: NextFunction) => {
+  const { mainFile, discountFile } = req.files as Record<string, Express.Multer.File[]>;
+
+  try {
+    if (!isExcelFile(mainFile[0]) || !isExcelFile(discountFile[0])) {
+      return responseHelper.throwBadRequestError("Invalid file format", res);
+    }
   } catch (error) {
     next(error);
   }

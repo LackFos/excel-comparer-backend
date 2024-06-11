@@ -17,7 +17,7 @@ app.use(express.json());
 
 app.use("/public", express.static("public"));
 app.use("/api/v1/tasks", taksRouter);
-app.use("/api/v1/excel", excelRouter);
+app.use("/api/v1/excels", excelRouter);
 
 app.use(ErrorHandler);
 

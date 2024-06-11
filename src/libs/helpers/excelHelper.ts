@@ -1,12 +1,20 @@
-import ExcelJS from "exceljs";
+import ExcelJS, { Workbook } from "exceljs";
 import { excelDocument } from "../../interfaces/excel";
 
-export const getExcelSheetData = (
-  workbook: ExcelJS.Workbook,
+export const getExcelSheetData = async (
+  data: string | Buffer,
   sheetName: string,
   columns: string[],
   startRowIndex: number
 ) => {
+  let workbook = new ExcelJS.Workbook();
+
+  if (typeof data === "string") {
+    await workbook.xlsx.readFile(data);
+  } else {
+    await workbook.xlsx.load(data);
+  }
+
   const worksheet = workbook.getWorksheet(sheetName);
 
   const rowTemplate: Record<string, string> = {};
@@ -37,43 +45,11 @@ export const getExcelSheetData = (
   return sheetData;
 };
 
-export const readExcelBuffer = (buffer: Buffer): Promise<ExcelJS.Workbook> => {
-  const workbook = new ExcelJS.Workbook();
-  return workbook.xlsx.load(buffer);
-};
-
-export const readExcelFile = (filename: string): Promise<ExcelJS.Workbook> => {
-  const workbook = new ExcelJS.Workbook();
-  return workbook.xlsx.readFile(filename);
-};
-
-export const createTaskFile = (rows: {}[], filename: string): Promise<void> => {
+export const createExcelWorkbook = (columns: string[], rows: {}[]): Workbook => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Sheet1");
 
-  const columnLabels = [
-    { name: "Kode Produk", filterButton: true },
-    { name: "Nama Produk", filterButton: true },
-    { name: "Kode Variasi", filterButton: true },
-    { name: "Name Variasi", filterButton: true },
-    { name: "SKU Induk", filterButton: true },
-    { name: "SKU", filterButton: true },
-    { name: "Harga", filterButton: true },
-    { name: "Stok", filterButton: true },
-    { name: "difference", filterButton: true },
-    { name: "differencePercent", filterButton: true },
-  ];
-
-  // const dataIndexes = new Set([
-  //   "kode_produk",
-  //   "nama_produk",
-  //   "kode_variasi",
-  //   "nama_variasi",
-  //   "sku_induk",
-  //   "sku_produk",
-  //   "harga",
-  //   "stok",
-  // ]);
+  const columnLabels = columns.map((column) => ({ name: column, filterButton: true }));
 
   sheet.addTable({
     name: "Table1",
@@ -84,21 +60,10 @@ export const createTaskFile = (rows: {}[], filename: string): Promise<void> => {
       showRowStripes: true,
     },
     columns: columnLabels,
-    rows: rows.map((row) => {
-      // const data = [];
-
-      // for (const [key, value] of Object.entries(row)) {
-      //   if (!dataIndexes.has(key)) continue;
-      //   data.push(value);
-      // }
-
-      // return data;
-
-      return Object.values(row);
-    }),
+    rows: rows.map((row) => Object.values(row)),
   });
 
-  return workbook.xlsx.writeFile(filename);
+  return workbook;
 };
 
 export const checkPrimaryColumn = (
