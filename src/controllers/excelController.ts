@@ -99,7 +99,7 @@ export const compareExcel = async (req: Request, res: Response) => {
 
             return item;
           })
-          .filter((row) => row && row.selisih > 0);
+          .filter((row) => row && row.selisih !== 0);
 
         return { filename: secondaryFilename, rows };
       })
