@@ -188,11 +188,7 @@ export const findActualPrice = async (req: Request, res: Response) => {
   try {
     const selectedExcel = await ExcelModel.findOne({ type: "shopee_product" });
 
-    const mainSheet = await getExcelSheetData(
-      mainFile[0].buffer,
-      selectedExcel!.columns,
-      selectedExcel!.startRowIndex
-    );
+    const mainSheet = await getExcelSheetData(mainFile[0].buffer, selectedExcel!.columns, 7);
 
     const discountSheet = await getExcelSheetData(
       discountFile[0].buffer,
