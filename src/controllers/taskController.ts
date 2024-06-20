@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import mongoose from "mongoose";
 import { Request, Response } from "express";
 import { endOfDay, startOfDay } from "date-fns";
@@ -5,21 +7,23 @@ import responseHelper from "../libs/helpers/responseHelper";
 import { getExcelSheetData } from "../libs/helpers/excelHelper";
 import { filterDuplicate } from "../libs/utils";
 import TaskModel from "../models/TaskModel";
-import fs from "fs";
 import { TaskStatus } from "../libs/enum";
+import archiver from "archiver";
 
 export const getAllTasks = async (req: Request, res: Response): Promise<void> => {
   const { startDate, endDate } = req.query;
 
   try {
-    const dateRange: Record<string, any> = {};
+    const dateFilters: Record<string, any> = {};
 
     if (startDate) {
-      dateRange.$gte = startOfDay(String(startDate));
-      dateRange.$lte = endOfDay(String(endDate || startDate));
+      dateFilters.createdAt = {
+        $gte: startOfDay(String(startDate)),
+        $lte: endOfDay(String(endDate || startDate)),
+      };
     }
 
-    const tasks = await TaskModel.find({ createdAt: dateRange })
+    const tasks = await TaskModel.find(dateFilters)
       .populate({
         path: "excel",
         select: "name type",
@@ -79,9 +83,9 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
   try {
     const taskId = new mongoose.Types.ObjectId();
 
-    const taskFilePath = `public/tasks/${taskId}.xlsx`;
+    const taskFilename = `${taskId}.xlsx`;
 
-    fs.writeFileSync(taskFilePath, file.buffer);
+    fs.writeFileSync(path.join(__dirname, "../../public/tasks", taskFilename), file.buffer);
 
     const createdTask = await TaskModel.create({
       _id: taskId,
@@ -91,7 +95,7 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
       type,
       status: TaskStatus.PENDING,
       excel: selectedExcel.id,
-      file: taskFilePath,
+      file: taskFilename,
     });
 
     return responseHelper.returnCreatedResponse("Task", createdTask, res);
@@ -160,7 +164,11 @@ export const submitTask = async (req: Request, res: Response) => {
     }
 
     const [taskSheet, submissionSheet] = await Promise.all([
-      getExcelSheetData(task.file, task.excel.columns, 2),
+      getExcelSheetData(
+        path.join(__dirname, "../../public/tasks", task.file),
+        task.excel.columns,
+        2
+      ),
       getExcelSheetData(file!.buffer, task.excel.columns, task.excel.startRowIndex),
     ]);
 
@@ -211,6 +219,39 @@ export const submitTask = async (req: Request, res: Response) => {
     };
 
     return responseHelper.returnOkResponse("Remaining Task", res, taskData);
+  } catch (error) {
+    return responseHelper.throwInternalError(
+      "Something went wrong, please try again later.",
+      res,
+      error
+    );
+  }
+};
+
+export const downloadTask = async (req: Request, res: Response) => {
+  try {
+    const tasks = await TaskModel.find({ _id: { $in: req.body.tasks } });
+
+    const filesToZip = tasks.map((task) => ({ name: task.name, path: task.file }));
+
+    const zip = archiver("zip", {
+      zlib: { level: 9 },
+    });
+
+    res.set({
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename=tugas.zip`,
+    });
+
+    zip.pipe(res);
+
+    const baseDirectory = path.join(__dirname, "../../public/tasks");
+
+    filesToZip.forEach((file) => {
+      zip.file(path.join(baseDirectory, file.path), { name: `${file.name}.xlsx` });
+    });
+
+    zip.finalize();
   } catch (error) {
     return responseHelper.throwInternalError(
       "Something went wrong, please try again later.",

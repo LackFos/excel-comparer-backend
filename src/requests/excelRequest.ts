@@ -120,11 +120,9 @@ export const findActualPriceRequest = async (req: Request, res: Response, next: 
           .test("type", "must be an xlsx file", (files: any) => {
             return files.every((file: any) => file.mimetype === xlsxFileMimetype);
           }),
-        customFile: mixed()
-          .required()
-          .test("type", "must be an xlsx file", (files: any) => {
-            return files.every((file: any) => file.mimetype === xlsxFileMimetype);
-          }),
+        customFile: mixed().test("type", "must be an xlsx file", (files: any) => {
+          return files.every((file: any) => file.mimetype === xlsxFileMimetype);
+        }),
       });
 
       await validateRequest(fileSchema, req.files);

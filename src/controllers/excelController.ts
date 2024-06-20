@@ -1,3 +1,4 @@
+import path from "path";
 import mongoose from "mongoose";
 import { Request, Response } from "express";
 import { filterDuplicate } from "../libs/utils";
@@ -27,7 +28,9 @@ export const compareExcel = async (req: Request, res: Response) => {
   const { targetColumn, selectedExcel } = req.body;
 
   try {
-    const mainFileBufferOrPath = files?.mainFile?.[0].buffer ?? req.body.mainFile.path;
+    const mainFileBufferOrPath =
+      files?.mainFile?.[0].buffer ??
+      path.join(__dirname, "../../public/combines", req.body.mainFile.path);
     const mainFilename = files?.mainFile?.[0].originalname ?? req.body.mainFile.filename;
     const startRowIndex = files?.mainFile ? selectedExcel.startRowIndex : 2;
 
@@ -62,7 +65,8 @@ export const compareExcel = async (req: Request, res: Response) => {
 
     const comparisonResults = await Promise.all(
       secondaryFiles.map(async (file) => {
-        const fileBufferOrPath = file?.buffer ?? file.path;
+        const fileBufferOrPath =
+          file?.buffer ?? path.join(__dirname, "../../public/combines", file.path);
         const filename = file?.originalname ?? file.filename;
 
         const fileSheet = await getExcelSheetData(
@@ -128,7 +132,9 @@ export const findMissingSku = async (req: Request, res: Response) => {
   const selectedExcel = req.body.selectedExcel; // This one from request validation middleware
 
   try {
-    const mainFileBufferOrPath = files?.mainFile?.[0].buffer ?? req.body.mainFile.path;
+    const mainFileBufferOrPath =
+      files?.mainFile?.[0].buffer ??
+      path.join(__dirname, "../../public/combines", req.body.mainFile.path);
     const mainFilename = files?.mainFile?.[0].originalname ?? req.body.mainFile.filename;
     const startRowIndex = files?.mainFile ? selectedExcel.startRowIndex : 2;
 
@@ -154,7 +160,8 @@ export const findMissingSku = async (req: Request, res: Response) => {
 
     const comparisonResults = await Promise.all(
       secondaryFiles.map(async (file) => {
-        const fileBufferOrPath = file?.buffer ?? file.path;
+        const fileBufferOrPath =
+          file?.buffer ?? path.join(__dirname, "../../public/combines", file.path);
         const filename = file?.originalname ?? file.filename;
 
         const fileSheet = await getExcelSheetData(
@@ -204,7 +211,6 @@ export const findActualPrice = async (req: Request, res: Response) => {
     const mainFilename = files.mainFile[0].originalname;
 
     const discountFileBufferOrPath = files.discountFile[0].buffer;
-    // const discountFilename = files?.discountFile?.[0].originalname ?? req.body.discountFile.filename;
     const discountFileColumns = [
       { key: "kode_produk", label: "Kode Produk" },
       { key: "nama_produk", label: "Nama Produk" },
@@ -217,7 +223,6 @@ export const findActualPrice = async (req: Request, res: Response) => {
     ];
 
     const customFileBufferOrPath = files.customFile[0].buffer;
-    // const customFilename = files?.customFile?.[0].buffer ?? req.body.customFile.path;
     const customFileColumns = [
       { key: "sku_produk", label: "SKU Produk" },
       { key: "harga_khusus", label: "Harga Khusus" },
@@ -233,6 +238,7 @@ export const findActualPrice = async (req: Request, res: Response) => {
 
     mainSheet.forEach((row) => {
       const productKey = row[selectedExcel!.primaryColumn];
+      if (productMap.has(productKey)) return;
       productMap.set(productKey, row);
     });
 
@@ -261,9 +267,12 @@ export const findActualPrice = async (req: Request, res: Response) => {
     });
 
     const uniqueId = new mongoose.Types.ObjectId();
-    const updatedFilePath = `public/combines/${outputFilenameSlug}_${uniqueId}.xlsx`;
+    const updatedFilePath = `${outputFilenameSlug}_${uniqueId}.xlsx`;
+
     const updatedFileWorkbook = createExcelWorkbook(selectedExcel!.columns, updatedRows);
-    updatedFileWorkbook.xlsx.writeFile(updatedFilePath);
+    updatedFileWorkbook.xlsx.writeFile(
+      path.join(__dirname, "../../public/combines", updatedFilePath)
+    );
 
     return responseHelper.returnOkResponse("Combine successful", res, {
       filename: outputFilename,

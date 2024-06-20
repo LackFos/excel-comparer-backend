@@ -6,6 +6,7 @@ import {
   createTask,
   updateTask,
   submitTask,
+  downloadTask,
 } from "../controllers/taskController";
 import {
   createTaskRequest,
@@ -19,6 +20,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // POST compare a task with new excel
 router.post("/:id/submit", upload.single("file"), submitTaskRequest, submitTask);
+
+// POST download a zip that contain list of tasks excel
+router.post("/download", downloadTask);
 
 router
   .route("/")

@@ -1,3 +1,4 @@
+import path from "path";
 import cors from "cors";
 import dotenv from "dotenv";
 import express, { Express } from "express";
@@ -15,7 +16,7 @@ app.use(cors());
 
 app.use(express.json());
 
-app.use("/public", express.static("public"));
+app.use("/public", express.static(path.join(__dirname, "public")));
 app.use("/api/v1/tasks", taksRouter);
 app.use("/api/v1/excels", excelRouter);
 
