@@ -21,13 +21,17 @@ const taskSchema = new Schema<taskDocument>(
       type: String,
       required: true,
     },
-    config: [
-      {
-        start: { type: String, required: true },
-        end: { type: String, required: true },
-        color: { type: String, required: true },
-      },
-    ],
+    config: {
+      type: [
+        {
+          start: { type: String, required: true },
+          end: { type: String, required: true },
+          color: { type: String, required: true },
+        },
+      ],
+      required: true,
+      default: [],
+    },
     excel: {
       type: mongoose.Schema.ObjectId,
       ref: "Excel",

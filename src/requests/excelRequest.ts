@@ -1,45 +1,56 @@
-import { object, string } from "yup";
+import { array, mixed, object, string } from "yup";
 import { Request, Response, NextFunction } from "express";
-import { isExcelFile, validateRequest } from "../libs/utils";
-import responseHelper from "../libs/helpers/responseHelper";
+import { validateRequest } from "../libs/utils";
 import ExcelModel from "../models/ExcelModel";
+import { xlsxFileMimetype } from "../libs/const";
 
 export const compareExcelRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // 1) Check is type valid
+    // 1) Check is mainFile & secondaryFiles is valid
+    if (req.files) {
+      const fileSchema = object({
+        mainFile: mixed()
+          .required()
+          .test("type", "must be an xlsx file", (files: any) => {
+            return files[0].mimetype === xlsxFileMimetype;
+          }),
+        secondaryFiles: mixed()
+          .required()
+          .test("type", "must be an xlsx file", (files: any) => {
+            return files.every((file: any) => file.mimetype === xlsxFileMimetype);
+          }),
+      });
+
+      await validateRequest(fileSchema, req.files);
+    } else {
+      const bodySchema = object({
+        mainFile: object({ filename: string().required(), path: string().required() }),
+        secondaryFiles: array().of(
+          object({ filename: string().required(), path: string().required() })
+        ),
+      });
+
+      await validateRequest(bodySchema, req.body);
+    }
+
+    // 2) Check is type valid
     const excels = await ExcelModel.find();
     const validTypes = excels.map((excel) => excel.type);
 
-    const excelTypeSchema = object({
+    const bodySchema = object({
       type: string().required().oneOf(validTypes),
     });
-    await validateRequest(excelTypeSchema, req.body); // Validate
 
-    //  2) Check is targetColumn valid
+    await validateRequest(bodySchema, req.body);
+
+    //  3) Check is targetColumn valid
     const selectedExcel = excels.find((excel) => excel.type === req.body.type)!;
     req.body.selectedExcel = selectedExcel;
 
     const targetColumnSchema = object({
       targetColumn: string().required().oneOf(selectedExcel.filterableColumns),
     });
-    await validateRequest(targetColumnSchema, req.body); // Validate
-
-    // 3) Check is mainFile & secondaryFiles is exists and valid
-    const files = req.files as Record<string, Express.Multer.File[]>;
-    const mainFile = files?.mainFile?.[0];
-    const secondaryFiles = files?.secondaryFiles;
-
-    if (mainFile && !isExcelFile(mainFile)) {
-      return responseHelper.throwBadRequestError("Invalid request body", res, {
-        mainFile: "mainFile must be an xlsx file",
-      });
-    }
-
-    if (secondaryFiles && !secondaryFiles.every((file) => isExcelFile(file))) {
-      return responseHelper.throwBadRequestError("Invalid request body", res, {
-        secondaryFiles: "secondaryFiles must be xlsx files",
-      });
-    }
+    await validateRequest(targetColumnSchema, req.body);
 
     next();
   } catch (error) {
@@ -49,35 +60,46 @@ export const compareExcelRequest = async (req: Request, res: Response, next: Nex
 
 export const findMissingSkuRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // 1) Check is type valid
+    // 1) Check is mainFile & secondaryFiles is valid
+    if (req.files) {
+      const fileSchema = object({
+        mainFile: mixed()
+          .required()
+          .test("type", "must be an xlsx file", (files: any) => {
+            return files[0].mimetype === xlsxFileMimetype;
+          }),
+        secondaryFiles: mixed()
+          .required()
+          .test("type", "must be an xlsx file", (files: any) => {
+            return files.every((file: any) => file.mimetype === xlsxFileMimetype);
+          }),
+      });
+
+      await validateRequest(fileSchema, req.files);
+    } else {
+      const fileSchema = object({
+        mainFile: object({ filename: string().required(), path: string().required() }),
+        secondaryFiles: array().of(
+          object({ filename: string().required(), path: string().required() })
+        ),
+      });
+
+      await validateRequest(fileSchema, req.body);
+    }
+
+    // 2) Check is type valid
     const excels = await ExcelModel.find({ type: { $regex: "_product$" } });
     const validTypes = excels.map((excel) => excel.type);
 
-    const excelTypeSchema = object({
+    const bodySchema = object({
       type: string().required().oneOf(validTypes),
     });
-    await validateRequest(excelTypeSchema, req.body); // Validate
+    await validateRequest(bodySchema, req.body);
 
-    //  2) Check is targetColumn valid
+    //  3) Store the related excel
     const selectedExcel = excels.find((excel) => excel.type === req.body.type)!;
     req.body.selectedExcel = selectedExcel;
 
-    // 3) Check is mainFile & secondaryFiles is exists and valid
-    const files = req.files as Record<string, Express.Multer.File[]>;
-    const mainFile = files?.mainFile?.[0];
-    const secondaryFiles = files?.secondaryFiles;
-
-    if (!mainFile || !isExcelFile(mainFile)) {
-      return responseHelper.throwBadRequestError("Invalid request body", res, {
-        mainFile: "mainFile must be an xlsx file",
-      });
-    }
-
-    if (!secondaryFiles || !secondaryFiles.every((file) => isExcelFile(file))) {
-      return responseHelper.throwBadRequestError("Invalid request body", res, {
-        secondaryFiles: "secondaryFiles must be xlsx files",
-      });
-    }
     next();
   } catch (error) {
     next(error);
@@ -85,11 +107,27 @@ export const findMissingSkuRequest = async (req: Request, res: Response, next: N
 };
 
 export const findActualPriceRequest = async (req: Request, res: Response, next: NextFunction) => {
-  const { mainFile, discountFile } = req.files as Record<string, Express.Multer.File[]>;
-
   try {
-    if (!mainFile || !isExcelFile(mainFile[0]) || !discountFile || !isExcelFile(discountFile[0])) {
-      return responseHelper.throwBadRequestError("Invalid file format", res);
+    if (req.files) {
+      const fileSchema = object({
+        mainFile: mixed()
+          .required()
+          .test("type", "must be an xlsx file", (files: any) => {
+            return files[0].mimetype === xlsxFileMimetype;
+          }),
+        discountFile: mixed()
+          .required()
+          .test("type", "must be an xlsx file", (files: any) => {
+            return files.every((file: any) => file.mimetype === xlsxFileMimetype);
+          }),
+        customFile: mixed()
+          .required()
+          .test("type", "must be an xlsx file", (files: any) => {
+            return files.every((file: any) => file.mimetype === xlsxFileMimetype);
+          }),
+      });
+
+      await validateRequest(fileSchema, req.files);
     }
 
     next();

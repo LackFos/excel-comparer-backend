@@ -23,7 +23,7 @@ router.post("/:id/submit", upload.single("file"), submitTaskRequest, submitTask)
 router
   .route("/")
   .get(getAllTaskRequest, getAllTasks) // GET all tasks
-  .post(createTaskRequest, createTask); // POST a new task
+  .post(upload.single("file"), createTaskRequest, createTask); // POST a new task
 
 router
   .route("/:id")

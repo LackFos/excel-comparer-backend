@@ -1,31 +1,30 @@
 import mongoose from "mongoose";
 import { Request, Response } from "express";
 import { endOfDay, startOfDay } from "date-fns";
-import { TaskStatus } from "../libs/enum";
 import responseHelper from "../libs/helpers/responseHelper";
-import { createExcelWorkbook, getExcelSheetData } from "../libs/helpers/excelHelper";
-import { capitalizeWords, filterDuplicate } from "../libs/utils";
+import { getExcelSheetData } from "../libs/helpers/excelHelper";
+import { filterDuplicate } from "../libs/utils";
 import TaskModel from "../models/TaskModel";
+import fs from "fs";
+import { TaskStatus } from "../libs/enum";
 
 export const getAllTasks = async (req: Request, res: Response): Promise<void> => {
   const { startDate, endDate } = req.query;
 
   try {
-    const dateFilters: Record<string, any> = {};
+    const dateRange: Record<string, any> = {};
 
     if (startDate) {
-      dateFilters.createdAt = {
-        $gte: startOfDay(String(startDate)),
-        $lte: endOfDay(String(endDate || startDate)),
-      };
+      dateRange.$gte = startOfDay(String(startDate));
+      dateRange.$lte = endOfDay(String(endDate || startDate));
     }
 
-    const tasks = await TaskModel.find(dateFilters)
+    const tasks = await TaskModel.find({ createdAt: dateRange })
       .populate({
         path: "excel",
         select: "name type",
       })
-      .select("name status targetColumn createdAt");
+      .select("name status targetColumn file createdAt");
 
     const message = tasks.length > 0 ? `Task found` : `No task found`;
 
@@ -51,8 +50,8 @@ export const getTaskDetail = async (req: Request, res: Response): Promise<void> 
       .select("name status config targetColumn file");
 
     if (!task || !task.excel) {
-      const errorMessage = task ? "Excel related to the task not found" : "Task not found";
-      return responseHelper.throwNotFoundError(errorMessage, res);
+      const message = task ? "Excel related to the task not found" : "Task not found";
+      return responseHelper.throwNotFoundError(message, res);
     }
 
     const taskSheet = await getExcelSheetData(task.file, task.excel.columns, 2);
@@ -73,35 +72,29 @@ export const getTaskDetail = async (req: Request, res: Response): Promise<void> 
 };
 
 export const createTask = async (req: Request, res: Response): Promise<void> => {
-  const { name, rows, type: taskType, config, targetColumn } = req.body;
-  const selectedExcel = req.body.selectedExcel;
+  const file = req.file!;
+  const { name, type, config, targetColumn } = req.body;
+  const selectedExcel = req.body.selectedExcel; // This one from request middleware
 
   try {
     const taskId = new mongoose.Types.ObjectId();
 
-    const taskName = capitalizeWords(`${name} ${selectedExcel.name}`);
     const taskFilePath = `public/tasks/${taskId}.xlsx`;
-    const taskWorkbook = createExcelWorkbook(selectedExcel.columns, rows);
 
-    taskWorkbook.xlsx.writeFile(taskFilePath);
+    fs.writeFileSync(taskFilePath, file.buffer);
 
     const createdTask = await TaskModel.create({
       _id: taskId,
-      name: taskName,
+      name,
       config,
       targetColumn,
-      type: taskType,
+      type,
       status: TaskStatus.PENDING,
       excel: selectedExcel.id,
       file: taskFilePath,
     });
 
-    const taskData = {
-      ...createdTask.toJSON(),
-      rows,
-    };
-
-    return responseHelper.returnCreatedResponse("Task", taskData, res);
+    return responseHelper.returnCreatedResponse("Task", createdTask, res);
   } catch (error) {
     return responseHelper.throwInternalError(
       "Something went wrong, please try again later.",
@@ -113,12 +106,12 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
 
 export const updateTask = async (req: Request, res: Response): Promise<void> => {
   const taskId = req.params.id;
-  const { status: taskStatus } = req.body;
+  const { status } = req.body;
 
   try {
     const task = await TaskModel.findByIdAndUpdate(
       taskId,
-      { status: taskStatus },
+      { status },
       { new: true, runValidators: true }
     )
       .populate({
@@ -151,7 +144,7 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
 
 export const submitTask = async (req: Request, res: Response) => {
   const taskId = req.params.id;
-  const submissionFile = req.file;
+  const file = req.file;
 
   try {
     const task = await TaskModel.findById(taskId)
@@ -168,7 +161,7 @@ export const submitTask = async (req: Request, res: Response) => {
 
     const [taskSheet, submissionSheet] = await Promise.all([
       getExcelSheetData(task.file, task.excel.columns, 2),
-      getExcelSheetData(submissionFile!.buffer, task.excel.columns, task.excel.startRowIndex),
+      getExcelSheetData(file!.buffer, task.excel.columns, task.excel.startRowIndex),
     ]);
 
     const submissionDuplicates = filterDuplicate(
@@ -194,9 +187,7 @@ export const submitTask = async (req: Request, res: Response) => {
         const product = productMap.get(row[task.excel!.primaryColumn]);
         const submissionValue = row[task.targetColumn];
 
-        if (!product || product.value === undefined) {
-          return null;
-        }
+        if (!product || product.value === undefined) return null;
 
         const item: any = {
           ...row,

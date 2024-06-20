@@ -36,6 +36,7 @@ router.post(
   upload.fields([
     { name: "mainFile", maxCount: 1 },
     { name: "discountFile", maxCount: 1 },
+    { name: "customFile", maxCount: 1 },
   ]),
   findActualPriceRequest,
   findActualPrice
