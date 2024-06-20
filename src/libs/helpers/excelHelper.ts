@@ -21,7 +21,7 @@ export const getExcelSheetData = async (
     rowTemplate[column.key] = "";
   });
 
-  const sheetData: Record<string, string>[] = [];
+  const sheetData: Record<string, any>[] = [];
 
   worksheet?.eachRow((row, rowNumber) => {
     if (rowNumber < startRowIndex) return;

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import mongoose from "mongoose";
 import { Request, Response } from "express";
-import { endOfDay, startOfDay } from "date-fns";
+import { endOfDay, startOfDay, sub } from "date-fns";
 import responseHelper from "../libs/helpers/responseHelper";
 import { getExcelSheetData } from "../libs/helpers/excelHelper";
 import { filterDuplicate } from "../libs/utils";
@@ -58,7 +58,11 @@ export const getTaskDetail = async (req: Request, res: Response): Promise<void> 
       return responseHelper.throwNotFoundError(message, res);
     }
 
-    const taskSheet = await getExcelSheetData(task.file, task.excel.columns, 2);
+    const taskSheet = await getExcelSheetData(
+      path.join(__dirname, "../../public/tasks", task.file),
+      task.excel.columns,
+      2
+    );
 
     const taskData = {
       ...task.toJSON(),
@@ -177,38 +181,36 @@ export const submitTask = async (req: Request, res: Response) => {
       task.excel!.startRowIndex
     );
 
-    const productMap = new Map<string, { value: string; selisih: number; persentase: number }>();
+    const productMap = new Map<string, { value: string }>();
 
-    taskSheet.forEach((row: any) => {
+    submissionSheet.forEach((row: any) => {
       const productId = row[task.excel!.primaryColumn];
-      const { selisih, persentase } = row;
 
       productMap.set(productId, {
         value: row[task.targetColumn],
-        selisih: Number(selisih),
-        persentase: Number(persentase),
       });
     });
 
-    const remainingTasks = submissionSheet
+    const remainingTasks = taskSheet
       .map((row) => {
         const product = productMap.get(row[task.excel!.primaryColumn]);
         const submissionValue = row[task.targetColumn];
 
-        if (!product || product.value === undefined) return null;
-
-        const item: any = {
+        const items: Record<string, any> = {
           ...row,
-          selisih: product.selisih,
-          persentase: product.persentase,
-          sebelumnya: product.value,
+          harga: "Produk tidak ditemukan",
+          sebelumnya: row[task.targetColumn],
         };
 
+        if (!product || product.value === undefined) return items;
+
+        items.harga = product.value;
+
         if (product.value !== submissionValue) {
-          item.isModified = true;
+          items.isModified = true;
         }
 
-        return item;
+        return items;
       })
       .filter(Boolean);
 
