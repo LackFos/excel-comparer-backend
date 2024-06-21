@@ -222,16 +222,9 @@ export const findActualPrice = async (req: Request, res: Response) => {
       { key: "harga_diskon", label: "Harga Diskon" },
     ];
 
-    const customFileBufferOrPath = files.customFile[0].buffer;
-    const customFileColumns = [
-      { key: "sku_produk", label: "SKU Produk" },
-      { key: "harga_khusus", label: "Harga Khusus" },
-    ];
-
-    const [mainSheet, discountSheet, customSheet] = await Promise.all([
+    const [mainSheet, discountSheet] = await Promise.all([
       getExcelSheetData(mainFileBufferOrPath, selectedExcel!.columns, selectedExcel!.startRowIndex),
       getExcelSheetData(discountFileBufferOrPath, discountFileColumns, 2),
-      getExcelSheetData(customFileBufferOrPath, customFileColumns, 2),
     ]);
 
     const productMap = new Map<string, any>();
@@ -250,13 +243,23 @@ export const findActualPrice = async (req: Request, res: Response) => {
       productMap.set(productKey, { ...product, harga: row.harga_diskon });
     });
 
-    customSheet.forEach((row) => {
-      const productKey = row[selectedExcel!.primaryColumn];
+    if (files.customFile) {
+      const customFileBufferOrPath = files.customFile[0].buffer;
+      const customFileColumns = [
+        { key: "sku_produk", label: "SKU Produk" },
+        { key: "harga_khusus", label: "Harga Khusus" },
+      ];
 
-      if (!productMap.has(productKey)) return;
-      const product = productMap.get(productKey);
-      productMap.set(productKey, { ...product, harga: row.harga_khusus });
-    });
+      const customSheet = await getExcelSheetData(customFileBufferOrPath, customFileColumns, 2);
+
+      customSheet.forEach((row) => {
+        const productKey = row[selectedExcel!.primaryColumn];
+
+        if (!productMap.has(productKey)) return;
+        const product = productMap.get(productKey);
+        productMap.set(productKey, { ...product, harga: row.harga_khusus });
+      });
+    }
 
     const updatedRows = Array.from(productMap, ([key, value]) => value);
 
