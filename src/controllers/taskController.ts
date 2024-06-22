@@ -2,18 +2,27 @@ import fs from "fs";
 import path from "path";
 import mongoose from "mongoose";
 import { Request, Response } from "express";
-import { endOfDay, startOfDay, sub } from "date-fns";
+import { endOfDay, isValid, parseISO, startOfDay } from "date-fns";
 import responseHelper from "../libs/helpers/responseHelper";
-import { getExcelSheetData } from "../libs/helpers/excelHelper";
+import { getSheetData } from "../libs/helpers/excelHelper";
 import { filterDuplicate } from "../libs/utils";
 import TaskModel from "../models/TaskModel";
 import { TaskStatus } from "../libs/enum";
 import archiver from "archiver";
+import { excelMimetype } from "../libs/const";
+import ExcelModel from "../models/ExcelModel";
 
 export const getAllTasks = async (req: Request, res: Response): Promise<void> => {
   const { startDate, endDate } = req.query;
 
   try {
+    // Validation start here
+    if ((startDate && !isValid(parseISO(startDate as string))) || (endDate && !isValid(parseISO(endDate as string)))) {
+      const errorMessage = "startDate and endDate must be valid dates";
+      return responseHelper.throwBadRequestError(errorMessage, res);
+    }
+
+    // Logic start here
     const dateFilters: Record<string, any> = {};
 
     if (startDate) {
@@ -24,33 +33,23 @@ export const getAllTasks = async (req: Request, res: Response): Promise<void> =>
     }
 
     const tasks = await TaskModel.find(dateFilters)
-      .populate({
-        path: "excel",
-        select: "name type",
-      })
+      .populate({ path: "excel", select: "name type" })
       .select("name status targetColumn file createdAt");
 
     const message = tasks.length > 0 ? `Task found` : `No task found`;
 
     return responseHelper.returnOkResponse(message, res, tasks);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
 export const getTaskDetail = async (req: Request, res: Response): Promise<void> => {
-  const taskId = req.params.id;
+  const id = req.params.id;
 
   try {
-    const task = await TaskModel.findById(taskId)
-      .populate({
-        path: "excel",
-        select: "primaryColumn columns",
-      })
+    const task = await TaskModel.findById(id)
+      .populate({ path: "excel", select: "primaryColumn columns" })
       .select("name status config targetColumn file");
 
     if (!task || !task.excel) {
@@ -58,11 +57,13 @@ export const getTaskDetail = async (req: Request, res: Response): Promise<void> 
       return responseHelper.throwNotFoundError(message, res);
     }
 
-    const taskSheet = await getExcelSheetData(
-      path.join(__dirname, "../../public/tasks", task.file),
-      task.excel.columns,
-      2
-    );
+    const taskFilePath = path.join(__dirname, "../../public/tasks", task.file);
+
+    const sheetColumns = [...task.excel.columns, { key: "selisih", label: "Selisih" }, { key: "persentase", label: "Persentase" }];
+
+    const skipRow = 2;
+
+    const taskSheet = await getSheetData(taskFilePath, sheetColumns, skipRow);
 
     const taskData = {
       ...task.toJSON(),
@@ -71,11 +72,7 @@ export const getTaskDetail = async (req: Request, res: Response): Promise<void> 
 
     return responseHelper.returnOkResponse("Task found", res, taskData);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
@@ -85,47 +82,70 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
   const selectedExcel = req.body.selectedExcel; // This one from request middleware
 
   try {
-    const taskId = new mongoose.Types.ObjectId();
+    // Validation start here
+    if (!file || (file && file.mimetype !== excelMimetype)) {
+      return responseHelper.throwBadRequestError("File must be an excel file", res);
+    }
 
-    const taskFilename = `${taskId}.xlsx`;
+    if (!name || !type || !config || !targetColumn) {
+      return responseHelper.throwBadRequestError("Invalid request body", res);
+    }
 
-    fs.writeFileSync(path.join(__dirname, "../../public/tasks", taskFilename), file.buffer);
+    if (
+      config.every(({ start, end, color }: { start: string; end: string; color: string }) => {
+        if (!start) return false;
+        if (!end) return false;
+        if (!color || !color.match(/^#[0-9A-Fa-f]{6}$/)) return false;
+      })
+    ) {
+      return responseHelper.throwBadRequestError("Invalid config value", res);
+    }
+
+    const excel = await ExcelModel.findOne({ type });
+
+    if (!excel) {
+      return responseHelper.throwBadRequestError("Excel type not found", res);
+    }
+
+    if (!excel.columns.find((column) => column.key === targetColumn)) {
+      return responseHelper.throwBadRequestError("Target column doesnt valid for this excel type", res);
+    }
+
+    // Logic start here
+    const id = new mongoose.Types.ObjectId();
+    const taskFilename = `${id}.xlsx`;
+    const taskFilePath = path.join(__dirname, "../../public/tasks", taskFilename);
+
+    fs.writeFileSync(taskFilePath, file.buffer);
 
     const createdTask = await TaskModel.create({
-      _id: taskId,
+      _id: id,
       name,
       config,
       targetColumn,
       type,
       status: TaskStatus.PENDING,
-      excel: selectedExcel.id,
+      excel: excel.id,
       file: taskFilename,
     });
 
     return responseHelper.returnCreatedResponse("Task", createdTask, res);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
 export const updateTask = async (req: Request, res: Response): Promise<void> => {
-  const taskId = req.params.id;
+  const id = req.params.id;
   const { status } = req.body;
 
   try {
-    const task = await TaskModel.findByIdAndUpdate(
-      taskId,
-      { status },
-      { new: true, runValidators: true }
-    )
-      .populate({
-        path: "excel",
-        select: "primaryColumn columns columnLabels",
-      })
+    if (!status) {
+      return responseHelper.throwBadRequestError("Invalid request body", res);
+    }
+
+    const task = await TaskModel.findByIdAndUpdate(id, { status }, { new: true, runValidators: true })
+      .populate({ path: "excel", select: "primaryColumn columns columnLabels" })
       .select("name status targetColumn file");
 
     if (!task || !task.excel) {
@@ -133,7 +153,10 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
       return responseHelper.throwNotFoundError(errorMessage, res);
     }
 
-    const taskSheet = await getExcelSheetData(task.file, task.excel.columns, 2);
+    const rowSkip = 2;
+    const sheetColumns = [...task.excel.columns, { key: "selisih", label: "Selisih" }, { key: "persentase", label: "Persentase" }];
+
+    const taskSheet = await getSheetData(task.file, sheetColumns, rowSkip);
 
     const taskData = {
       ...task.toJSON(),
@@ -142,77 +165,80 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
 
     return responseHelper.returnOkResponse("Task successfully updated!", res, taskData);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong. Please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong. Please try again later.", res, error);
   }
 };
 
 export const submitTask = async (req: Request, res: Response) => {
-  const taskId = req.params.id;
+  const id = req.params.id;
   const file = req.file;
 
   try {
-    const task = await TaskModel.findById(taskId)
-      .populate({
-        path: "excel",
-        select: "primaryColumn columns",
-      })
+    // Validation start here
+    const task = await TaskModel.findById(id)
+      .populate({ path: "excel", select: "primaryColumn columns" })
       .select("name status config targetColumn file");
+
+    if (!file) {
+      return responseHelper.throwBadRequestError("File must be an excel file", res);
+    }
 
     if (!task || !task.excel) {
       const errorMessage = task ? "Task related excel not found" : "Task not found";
       return responseHelper.throwNotFoundError(errorMessage, res);
     }
 
+    // Logic start here
+    const taskExcel = task.excel;
+
+    // Prepare sheet data
+    const taskFile = path.join(__dirname, "../../public/tasks", task.file);
+    const skipTaskSheetRow = 2;
+
+    const submissionFile = file.buffer;
+    const skipSubmissionSheetRow = taskExcel.startRowIndex;
+
+    const sheetColumns = [...taskExcel.columns, { key: "selisih", label: "Selisih" }, { key: "persentase", label: "Persentase" }];
+
     const [taskSheet, submissionSheet] = await Promise.all([
-      getExcelSheetData(
-        path.join(__dirname, "../../public/tasks", task.file),
-        task.excel.columns,
-        2
-      ),
-      getExcelSheetData(file!.buffer, task.excel.columns, task.excel.startRowIndex),
+      getSheetData(taskFile, sheetColumns, skipTaskSheetRow),
+      getSheetData(submissionFile, sheetColumns, skipSubmissionSheetRow),
     ]);
 
     const submissionDuplicates = filterDuplicate(
-      submissionSheet.map((row) => row[task.excel!.primaryColumn]),
-      task.excel!.startRowIndex
+      submissionSheet.map((row) => row[taskExcel.primaryColumn]),
+      taskExcel.startRowIndex
     );
 
     const productMap = new Map<string, { value: string }>();
 
-    submissionSheet.forEach((row: any) => {
-      const productId = row[task.excel!.primaryColumn];
+    // Get product reference for comparison
+    submissionSheet.forEach((row) => {
+      const productId = row[taskExcel.primaryColumn];
 
       productMap.set(productId, {
         value: row[task.targetColumn],
       });
     });
 
-    const remainingTasks = taskSheet
-      .map((row) => {
-        const product = productMap.get(row[task.excel!.primaryColumn]);
-        const submissionValue = row[task.targetColumn];
+    const remainingTasks = taskSheet.map((row) => {
+      const product = productMap.get(row[taskExcel.primaryColumn]);
+      const submissionValue = row[task.targetColumn];
 
-        const items: Record<string, any> = {
-          ...row,
-          harga: "Produk tidak ditemukan",
-          sebelumnya: row[task.targetColumn],
-        };
+      const items: Record<string, any> = {
+        ...row,
+        harga: "Produk tidak ditemukan",
+        sebelumnya: row[task.targetColumn],
+      };
 
-        if (!product || product.value === undefined) return items;
+      if (!product || product.value === undefined) return items;
 
-        items.harga = product.value;
+      items[task.targetColumn] = product.value;
 
-        if (product.value !== submissionValue) {
-          items.isModified = true;
-        }
+      if (product.value !== submissionValue) items.isModified = true;
 
-        return items;
-      })
-      .filter(Boolean);
+      return items;
+    });
 
     const taskData = {
       ...task.toJSON(),
@@ -222,11 +248,7 @@ export const submitTask = async (req: Request, res: Response) => {
 
     return responseHelper.returnOkResponse("Remaining Task", res, taskData);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
@@ -234,11 +256,9 @@ export const downloadTask = async (req: Request, res: Response) => {
   try {
     const tasks = await TaskModel.find({ _id: { $in: req.body.tasks } });
 
-    const filesToZip = tasks.map((task) => ({ name: task.name, path: task.file }));
+    const tasksNameAndFile = tasks.map((task) => ({ name: task.name, file: task.file }));
 
-    const zip = archiver("zip", {
-      zlib: { level: 9 },
-    });
+    const zip = archiver("zip", { zlib: { level: 9 } });
 
     res.set({
       "Content-Type": "application/zip",
@@ -247,18 +267,13 @@ export const downloadTask = async (req: Request, res: Response) => {
 
     zip.pipe(res);
 
-    const baseDirectory = path.join(__dirname, "../../public/tasks");
-
-    filesToZip.forEach((file) => {
-      zip.file(path.join(baseDirectory, file.path), { name: `${file.name}.xlsx` });
+    tasksNameAndFile.forEach((task) => {
+      const filepath = path.join(__dirname, "../../public/tasks", task.file);
+      zip.file(filepath, { name: `${task.name}.xlsx` });
     });
 
     zip.finalize();
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };

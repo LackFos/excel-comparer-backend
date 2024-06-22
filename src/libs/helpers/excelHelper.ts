@@ -1,53 +1,43 @@
 import ExcelJS, { Workbook } from "exceljs";
 import { excelDocument } from "../../interfaces/excel";
 
-export const getExcelSheetData = async (
-  data: string | Buffer,
-  columns: { key: string; label: string }[],
-  startRowIndex: number
-) => {
+export const getSheetData = async (file: string | Buffer, columns: { key: string; label: string }[], skipRowCount: number) => {
   let workbook = new ExcelJS.Workbook();
 
-  if (typeof data === "string") {
-    await workbook.xlsx.readFile(data);
+  if (typeof file === "string") {
+    await workbook.xlsx.readFile(file);
   } else {
-    await workbook.xlsx.load(data);
+    await workbook.xlsx.load(file);
   }
 
-  const worksheet = workbook.getWorksheet("Sheet1");
+  const worksheet = workbook.getWorksheet("Sheet1")!;
 
   const rowTemplate: Record<string, string> = {};
+
   columns.forEach((column) => {
     rowTemplate[column.key] = "";
   });
 
   const sheetData: Record<string, any>[] = [];
 
-  worksheet?.eachRow((row, rowNumber) => {
-    if (rowNumber < startRowIndex) return;
+  worksheet.eachRow((row, index) => {
+    if (index < skipRowCount) return;
 
-    const rowData = { ...rowTemplate };
+    const item = { ...rowTemplate };
 
-    columns.forEach((column) => {
-      rowData[column.key] = "";
+    row.eachCell((cell, index) => {
+      if (!columns[index - 1]) return;
+      const columnKey = columns[index - 1].key;
+      item[columnKey] = String(cell.value) ?? "";
     });
 
-    row.eachCell((cell, cellNumber) => {
-      if (!columns[cellNumber - 1]) return;
-      const columnKey = columns[cellNumber - 1].key;
-      if (columnKey) rowData[columnKey] = cell.value?.toString() ?? "";
-    });
-
-    sheetData.push(rowData);
+    sheetData.push(item);
   });
 
   return sheetData;
 };
 
-export const createExcelWorkbook = (
-  columns: { key: string; label: string }[],
-  rows: {}[]
-): Workbook => {
+export const createExcelWorkbook = (columns: { key: string; label: string }[], rows: {}[]): Workbook => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Sheet1");
 
@@ -68,10 +58,7 @@ export const createExcelWorkbook = (
   return workbook;
 };
 
-export const checkPrimaryColumn = (
-  sheets: { name: string; data: Record<string, any>[] }[],
-  chosenExcel: excelDocument
-) => {
+export const checkPrimaryColumn = (sheets: { name: string; data: Record<string, any>[] }[], chosenExcel: excelDocument) => {
   sheets.map((sheet) => {
     const primaryKeyMap = new Map();
     const duplicateKeyMap = new Map();

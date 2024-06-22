@@ -3,9 +3,10 @@ import mongoose from "mongoose";
 import { Request, Response } from "express";
 import { filterDuplicate } from "../libs/utils";
 import responseHelper from "../libs/helpers/responseHelper";
-import { createExcelWorkbook, getExcelSheetData } from "../libs/helpers/excelHelper";
+import { createExcelWorkbook, getSheetData } from "../libs/helpers/excelHelper";
 import ExcelModel from "../models/ExcelModel";
 import slugify from "slugify";
+import { excelMimetype } from "../libs/const";
 
 export const getAllExcels = async (req: Request, res: Response) => {
   try {
@@ -15,91 +16,117 @@ export const getAllExcels = async (req: Request, res: Response) => {
 
     return responseHelper.returnOkResponse(message, res, excels);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
 export const compareExcel = async (req: Request, res: Response) => {
   const files = req.files as Record<string, Express.Multer.File[]>;
-  const { targetColumn, selectedExcel } = req.body;
+  const { type, targetColumn } = req.body;
 
   try {
-    const mainFileBufferOrPath =
-      files?.mainFile?.[0].buffer ??
-      path.join(__dirname, "../../public/combines", req.body.mainFile.path);
-    const mainFilename = files?.mainFile?.[0].originalname ?? req.body.mainFile.filename;
-    const startRowIndex = files?.mainFile ? selectedExcel.startRowIndex : 2;
+    // Validation start here
+    if (files) {
+      if (!files.mainFile || !files.secondaryFiles) {
+        return responseHelper.throwBadRequestError("mainFile and secondaryFiles are required", res);
+      }
 
-    const mainFileSheet = await getExcelSheetData(
-      mainFileBufferOrPath,
-      selectedExcel.columns,
-      startRowIndex
+      if (files.mainFile[0].mimetype !== excelMimetype || files.secondaryFiles.some((file) => file.mimetype !== excelMimetype)) {
+        return responseHelper.throwBadRequestError("File must be an excel file", res);
+      }
+    } else {
+      if (!req.body.mainFile || !req.body.secondaryFiles) {
+        return responseHelper.throwBadRequestError("mainFile and secondaryFiles are required", res);
+      }
+
+      if (
+        !req.body.mainFile.filename ||
+        !req.body.mainFile.path ||
+        req.body.secondaryFiles.some((file: { filename: string; path: string }) => !file.filename || !file.path)
+      ) {
+        return responseHelper.throwBadRequestError("Invalid request body: files", res);
+      }
+    }
+
+    const excel = await ExcelModel.findOne({ type });
+
+    if (!excel) {
+      return responseHelper.throwBadRequestError("Excel type not found", res);
+    }
+
+    if (!excel.filterableColumns.find((column) => column === targetColumn)) {
+      return responseHelper.throwBadRequestError("Target column doesnt valid for this excel type", res);
+    }
+
+    // Logic start here
+    const isFileRequest = files ? true : false;
+
+    const skipRowCount = isFileRequest ? excel.startRowIndex : 2;
+
+    const mainFileName = isFileRequest ? files.mainFile[0].originalname : req.body.mainFile.filename;
+
+    const mainSheet = await getSheetData(
+      isFileRequest ? files.mainFile[0].buffer : path.join(__dirname, "../../public/combines", req.body.mainFile.path),
+      excel.columns,
+      skipRowCount
     );
 
-    const duplicateRows: { filename: string; rows: { value: string; rowNumbers: number[] }[] }[] =
-      [];
+    // Record duplicated product
+    const duplicateProduct: { filename: string; rows: { value: string; rowNumbers: number[] }[] }[] = [];
 
     const mainFileDuplicate = filterDuplicate(
-      mainFileSheet.map((row) => row[selectedExcel.primaryColumn]),
-      startRowIndex
+      mainSheet.map((row) => row[excel.primaryColumn]),
+      skipRowCount
     );
 
     if (mainFileDuplicate.length > 0) {
-      duplicateRows.push({ filename: mainFilename, rows: mainFileDuplicate });
+      duplicateProduct.push({ filename: mainFileName, rows: mainFileDuplicate });
     }
 
-    const productMap = new Map<string, { value: string; rowNumber: string }>();
+    // Comparison start here
+    const productMap = new Map<string, { value: string }>();
 
-    mainFileSheet.forEach((row: any, index) => {
-      const productKey = row[selectedExcel.primaryColumn];
+    mainSheet.forEach((row) => {
+      const productKey = row[excel.primaryColumn];
       const value = row[targetColumn];
-      const rowNumber = index + startRowIndex;
-      productMap.set(productKey, { value, rowNumber });
+      productMap.set(productKey, { value });
     });
 
-    const secondaryFiles = files?.secondaryFiles ?? req.body.secondaryFiles;
+    const secondaryFiles = isFileRequest ? files.secondaryFiles : (req.body.secondaryFiles as Record<string, any>[]);
 
     const comparisonResults = await Promise.all(
       secondaryFiles.map(async (file) => {
-        const fileBufferOrPath =
-          file?.buffer ?? path.join(__dirname, "../../public/combines", file.path);
-        const filename = file?.originalname ?? file.filename;
+        const filename = isFileRequest ? (file as Express.Multer.File).originalname : file.filename;
 
-        const fileSheet = await getExcelSheetData(
-          fileBufferOrPath,
-          selectedExcel.columns,
-          startRowIndex
+        const fileSheet = await getSheetData(
+          isFileRequest ? (file as Express.Multer.File).buffer : path.join(__dirname, "../../public/combines", file.path),
+          excel.columns,
+          skipRowCount
         );
 
         const fileDuplicate = filterDuplicate(
-          fileSheet.map((data) => data[selectedExcel.primaryColumn]),
-          startRowIndex
+          fileSheet.map((data) => data[excel.primaryColumn]),
+          skipRowCount
         );
 
         if (fileDuplicate.length > 0) {
-          duplicateRows.push({ filename, rows: fileDuplicate });
+          duplicateProduct.push({ filename, rows: fileDuplicate });
         }
 
         const rows = fileSheet
-          .map((row: any) => {
-            const productKey = row[selectedExcel.primaryColumn];
+          .map((row) => {
+            const productKey = row[excel.primaryColumn];
             const product = productMap.get(productKey);
             const comparisonValue = row[targetColumn];
 
-            if (!product || product.value === undefined) {
-              return null;
-            }
+            if (!product) return null;
 
             const difference = Number(comparisonValue) - Number(product.value);
             const differencePercentage = (difference / Number(product.value)) * 100;
 
             const item: any = {
               ...row,
-              sebelumnya: product.value,
+              sebelumnya: Number(product.value),
               selisih: difference,
               persentase: differencePercentage,
             };
@@ -108,78 +135,101 @@ export const compareExcel = async (req: Request, res: Response) => {
           })
           .filter((row) => row && row.selisih !== 0);
 
-        return { filename: filename, rows };
+        return { filename, rows };
       })
     );
 
     return responseHelper.returnOkResponse("Comparison successful", res, {
-      excel: selectedExcel,
-      columns: selectedExcel.columnLabels,
+      excel: excel,
+      columns: excel.columns,
       results: comparisonResults,
-      duplicated: duplicateRows,
+      duplicated: duplicateProduct,
     });
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
 export const findMissingSku = async (req: Request, res: Response) => {
   const files = req.files as Record<string, Express.Multer.File[]>;
-  const selectedExcel = req.body.selectedExcel; // This one from request validation middleware
+  const { type } = req.body;
 
   try {
-    const mainFileBufferOrPath =
-      files?.mainFile?.[0].buffer ??
-      path.join(__dirname, "../../public/combines", req.body.mainFile.path);
-    const mainFilename = files?.mainFile?.[0].originalname ?? req.body.mainFile.filename;
-    const startRowIndex = files?.mainFile ? selectedExcel.startRowIndex : 2;
+    // Validation start here
+    if (files) {
+      if (!files.mainFile || !files.secondaryFiles) {
+        return responseHelper.throwBadRequestError("mainFile and secondaryFiles are required", res);
+      }
 
-    const mainSheet = await getExcelSheetData(
-      mainFileBufferOrPath,
-      selectedExcel.columns,
-      startRowIndex
+      if (files.mainFile[0].mimetype !== excelMimetype || files.secondaryFiles.some((file) => file.mimetype !== excelMimetype)) {
+        return responseHelper.throwBadRequestError("File must be an excel file", res);
+      }
+    } else {
+      if (!req.body.mainFile || !req.body.secondaryFiles) {
+        return responseHelper.throwBadRequestError("mainFile and secondaryFiles are required", res);
+      }
+
+      if (
+        !req.body.mainFile.filename ||
+        !req.body.mainFile.path ||
+        req.body.secondaryFiles.some((file: { filename: string; path: string }) => !file.filename || !file.path)
+      ) {
+        return responseHelper.throwBadRequestError("Invalid request body: files", res);
+      }
+    }
+
+    const excel = await ExcelModel.findOne({ type });
+
+    if (!excel) {
+      return responseHelper.throwBadRequestError("Excel type not found", res);
+    }
+
+    // Logic start here
+    const isFileRequest = files ? true : false;
+
+    const skipRowCount = isFileRequest ? excel.startRowIndex : 2;
+
+    const mainFileName = isFileRequest ? files.mainFile[0].originalname : req.body.mainFile.filename;
+
+    const mainSheet = await getSheetData(
+      isFileRequest ? files.mainFile[0].buffer : path.join(__dirname, "../../public/combines", req.body.mainFile.path),
+      excel.columns,
+      skipRowCount
     );
 
-    const duplicateRows: { filename: string; rows: { value: string; rowNumbers: number[] }[] }[] =
-      [];
+    const duplicateProduct: { filename: string; rows: { value: string; rowNumbers: number[] }[] }[] = [];
 
     const mainFileDuplicate = filterDuplicate(
-      mainSheet.map((row) => row[selectedExcel.primaryColumn]),
-      startRowIndex
+      mainSheet.map((row) => row[excel.primaryColumn]),
+      skipRowCount
     );
 
     if (mainFileDuplicate.length > 0) {
-      duplicateRows.push({ filename: mainFilename, rows: mainFileDuplicate });
+      duplicateProduct.push({ filename: mainFileName, rows: mainFileDuplicate });
     }
 
-    const secondaryFiles = files?.secondaryFiles ?? req.body.secondaryFiles;
+    const secondaryFiles = isFileRequest ? files.secondaryFiles : (req.body.secondaryFiles as [Record<string, any>]);
 
     const comparisonResults = await Promise.all(
       secondaryFiles.map(async (file) => {
-        const fileBufferOrPath =
-          file?.buffer ?? path.join(__dirname, "../../public/combines", file.path);
-        const filename = file?.originalname ?? file.filename;
+        const filename = isFileRequest ? (file as Express.Multer.File).originalname : file.filename;
 
-        const fileSheet = await getExcelSheetData(
-          fileBufferOrPath,
-          selectedExcel.columns,
-          startRowIndex
+        const fileSheet = await getSheetData(
+          isFileRequest ? (file as Express.Multer.File).buffer : path.join(__dirname, "../../public/combines", file.path),
+          excel.columns,
+          skipRowCount
         );
-
-        const skuMap = new Set(fileSheet.map((row) => row.sku_produk));
 
         const fileDuplicate = filterDuplicate(
           fileSheet.map((data) => data.sku_produk),
-          startRowIndex
+          skipRowCount
         );
 
         if (fileDuplicate.length > 0) {
-          duplicateRows.push({ filename, rows: fileDuplicate });
+          duplicateProduct.push({ filename, rows: fileDuplicate });
         }
+
+        const skuMap = new Set(fileSheet.map((row) => row.sku_produk));
 
         const missingSku = mainSheet.filter((row: any) => !skuMap.has(row.sku_produk));
 
@@ -188,16 +238,12 @@ export const findMissingSku = async (req: Request, res: Response) => {
     );
 
     return responseHelper.returnOkResponse("Comparison successful", res, {
-      excel: selectedExcel,
+      excel: excel,
       results: comparisonResults,
-      duplicated: duplicateRows,
+      duplicated: duplicateProduct,
     });
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
@@ -205,12 +251,26 @@ export const findActualPrice = async (req: Request, res: Response) => {
   const files = req.files as Record<string, Express.Multer.File[]>;
 
   try {
-    const selectedExcel = await ExcelModel.findOne({ type: "shopee_product" });
+    if (!files || !files.mainFile || !files.discountFile) {
+      return responseHelper.throwBadRequestError("mainFile and discountFile are required", res);
+    }
 
-    const mainFileBufferOrPath = files.mainFile[0].buffer;
-    const mainFilename = files.mainFile[0].originalname;
+    if (
+      files.mainFile[0].mimetype !== excelMimetype ||
+      files.discountFile[0].mimetype !== excelMimetype ||
+      (files.customFile && files.customFile[0].mimetype !== excelMimetype)
+    ) {
+      return responseHelper.throwBadRequestError("File must be an excel file", res);
+    }
 
-    const discountFileBufferOrPath = files.discountFile[0].buffer;
+    const excel = await ExcelModel.findOne({ type: "shopee_product" });
+
+    if (!excel) {
+      return responseHelper.throwBadRequestError("Excel type not found", res);
+    }
+
+    const mainFileName = files.mainFile[0].originalname;
+
     const discountFileColumns = [
       { key: "kode_produk", label: "Kode Produk" },
       { key: "nama_produk", label: "Nama Produk" },
@@ -223,47 +283,56 @@ export const findActualPrice = async (req: Request, res: Response) => {
     ];
 
     const [mainSheet, discountSheet] = await Promise.all([
-      getExcelSheetData(mainFileBufferOrPath, selectedExcel!.columns, selectedExcel!.startRowIndex),
-      getExcelSheetData(discountFileBufferOrPath, discountFileColumns, 2),
+      getSheetData(files.mainFile[0].buffer, excel.columns, excel.startRowIndex),
+      getSheetData(files.discountFile[0].buffer, discountFileColumns, 2),
     ]);
 
-    const productMap = new Map<string, any>();
-
-    mainSheet.forEach((row) => {
-      const productKey = row[selectedExcel!.primaryColumn];
-      if (productMap.has(productKey)) return;
-      productMap.set(productKey, row);
-    });
+    const discountPriceMap = new Map<string, { price: number }>();
 
     discountSheet.forEach((row) => {
-      const productKey = row[selectedExcel!.primaryColumn];
-
-      if (!productMap.has(productKey)) return;
-      const product = productMap.get(productKey);
-      productMap.set(productKey, { ...product, harga: row.harga_diskon });
+      const productKey = row[excel.primaryColumn];
+      if (discountPriceMap.has(productKey)) return;
+      discountPriceMap.set(productKey, { price: row.harga_diskon });
     });
 
+    const customPriceMap = new Map<string, { price: number }>();
+
     if (files.customFile) {
-      const customFileBufferOrPath = files.customFile[0].buffer;
       const customFileColumns = [
         { key: "sku_produk", label: "SKU Produk" },
         { key: "harga_khusus", label: "Harga Khusus" },
       ];
 
-      const customSheet = await getExcelSheetData(customFileBufferOrPath, customFileColumns, 2);
+      const customSheet = await getSheetData(files.customFile[0].buffer, customFileColumns, 2);
 
       customSheet.forEach((row) => {
-        const productKey = row[selectedExcel!.primaryColumn];
-
-        if (!productMap.has(productKey)) return;
-        const product = productMap.get(productKey);
-        productMap.set(productKey, { ...product, harga: row.harga_khusus });
+        const productKey = row[excel.primaryColumn];
+        if (customPriceMap.has(productKey)) return;
+        customPriceMap.set(productKey, { price: row.harga_khusus });
       });
     }
 
-    const updatedRows = Array.from(productMap, ([key, value]) => value);
+    const updatedRows = mainSheet
+      .map((row) => {
+        const productKey = row[excel.primaryColumn];
+        const discountPriceProduct = discountPriceMap.get(productKey);
+        const customPriceProduct = customPriceMap.get(productKey);
 
-    const outputFilename = mainFilename.substring(0, mainFilename.length - 5);
+        let price = Number(row.harga);
+
+        if (discountPriceProduct) {
+          price = discountPriceProduct.price;
+        }
+
+        if (customPriceProduct && customPriceProduct.price === price) {
+          return null;
+        }
+
+        return { ...row, harga: price };
+      })
+      .filter((row) => row !== null);
+
+    const outputFilename = mainFileName.substring(0, mainFileName.length - 5);
     const outputFilenameSlug = slugify(outputFilename, {
       replacement: "_",
       lower: true,
@@ -272,20 +341,14 @@ export const findActualPrice = async (req: Request, res: Response) => {
     const uniqueId = new mongoose.Types.ObjectId();
     const updatedFilePath = `${outputFilenameSlug}_${uniqueId}.xlsx`;
 
-    const updatedFileWorkbook = createExcelWorkbook(selectedExcel!.columns, updatedRows);
-    updatedFileWorkbook.xlsx.writeFile(
-      path.join(__dirname, "../../public/combines", updatedFilePath)
-    );
+    const updatedFileWorkbook = createExcelWorkbook(excel.columns, updatedRows);
+    updatedFileWorkbook.xlsx.writeFile(path.join(__dirname, "../../public/combines", updatedFilePath));
 
     return responseHelper.returnOkResponse("Combine successful", res, {
       filename: outputFilename,
       path: updatedFilePath,
     });
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };

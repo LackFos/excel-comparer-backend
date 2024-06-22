@@ -8,30 +8,24 @@ import {
   submitTask,
   downloadTask,
 } from "../controllers/taskController";
-import {
-  createTaskRequest,
-  getAllTaskRequest,
-  submitTaskRequest,
-  updateTaskRequest,
-} from "../requests/taskRequest";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// POST compare a task with new excel
-router.post("/:id/submit", upload.single("file"), submitTaskRequest, submitTask);
-
-// POST download a zip that contain list of tasks excel
-router.post("/download", downloadTask);
-
 router
   .route("/")
-  .get(getAllTaskRequest, getAllTasks) // GET all tasks
-  .post(upload.single("file"), createTaskRequest, createTask); // POST a new task
+  .get(getAllTasks) // GET all tasks
+  .post(upload.single("file"), createTask); // POST a new task
 
 router
   .route("/:id")
   .get(getTaskDetail) // GET single task
-  .patch(updateTaskRequest, updateTask); // PATCH update a task
+  .patch(updateTask); // PATCH update a task
+
+// POST compare a task with new excel
+router.post("/:id/submit", upload.single("file"), submitTask);
+
+// POST download a zip that contain list of tasks excel
+router.post("/download", downloadTask);
 
 export default router;
