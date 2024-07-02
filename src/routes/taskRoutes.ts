@@ -6,7 +6,7 @@ import {
   createTask,
   updateTask,
   submitTask,
-  downloadTask,
+  archiveTask,
 } from "../controllers/taskController";
 
 const router = express.Router();
@@ -25,7 +25,7 @@ router
 // POST compare a task with new excel
 router.post("/:id/submit", upload.single("file"), submitTask);
 
-// POST download a zip that contain list of tasks excel
-router.post("/download", downloadTask);
+// POST archive tasks excel
+router.post("/archive", archiveTask);
 
 export default router;

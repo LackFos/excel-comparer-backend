@@ -1,5 +1,3 @@
-import { xlsxFileMimetype } from "./const";
-
 export const validateRequest = (
   schema: any,
   values: any,
@@ -12,7 +10,7 @@ export const validateRequest = (
 };
 
 export const isExcelFile = (file: Express.Multer.File): boolean => {
-  return file && file.mimetype === xlsxFileMimetype;
+  return file && file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 };
 
 export const filterDuplicate = (
