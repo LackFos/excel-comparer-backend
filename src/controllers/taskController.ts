@@ -357,7 +357,7 @@ export const archiveTask = async (req: Request, res: Response) => {
       archive.file(filepath, { name: `${task.name}.xlsx` });
     });
 
-    archive.finalize();
+    await archive.finalize();
 
     return responseHelper.returnOkResponse("Archive success", res, {
       path: "public/archives/" + filename,
