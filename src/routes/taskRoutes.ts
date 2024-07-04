@@ -1,13 +1,6 @@
 import express from "express";
 import multer from "multer";
-import {
-  getAllTasks,
-  getTaskDetail,
-  createTask,
-  updateTask,
-  submitTask,
-  archiveTask,
-} from "../controllers/taskController";
+import { getAllTasks, getTaskDetail, createTask, updateTask, submitTask, archiveTask } from "../controllers/taskController";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });

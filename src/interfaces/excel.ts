@@ -6,6 +6,6 @@ export interface excelDocument {
   name: string;
   primaryColumn: string;
   columns: { key: string; label: string }[];
-  filterableColumns: string[];
+  filterableColumns: { key: string; label: string }[];
   startRowIndex: number;
 }

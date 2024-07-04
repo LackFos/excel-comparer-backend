@@ -9,17 +9,13 @@ import slugify from "slugify";
 
 export const getAllExcels = async (req: Request, res: Response) => {
   try {
-    const excels = await ExcelModel.find().select("name type");
+    const excels = await ExcelModel.find().select("name type filterableColumns");
 
     const message = excels.length > 0 ? `Task found` : `No task found`;
 
     return responseHelper.returnOkResponse(message, res, excels);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
@@ -31,41 +27,23 @@ export const compareExcel = async (req: Request, res: Response) => {
     // Validation start here
     if (files) {
       if (!files.mainFile || !files.secondaryFiles) {
-        return responseHelper.throwBadRequestError(
-          "mainFile and secondaryFiles are required",
-          res
-        );
+        return responseHelper.throwBadRequestError("mainFile and secondaryFiles are required", res);
       }
 
-      if (
-        !isExcelFile(files.mainFile[0]) ||
-        files.secondaryFiles.some((file) => !isExcelFile(file))
-      ) {
-        return responseHelper.throwBadRequestError(
-          "File must be an excel file",
-          res
-        );
+      if (!isExcelFile(files.mainFile[0]) || files.secondaryFiles.some((file) => !isExcelFile(file))) {
+        return responseHelper.throwBadRequestError("File must be an excel file", res);
       }
     } else {
       if (!req.body.mainFile || !req.body.secondaryFiles) {
-        return responseHelper.throwBadRequestError(
-          "mainFile and secondaryFiles are required",
-          res
-        );
+        return responseHelper.throwBadRequestError("mainFile and secondaryFiles are required", res);
       }
 
       if (
         !req.body.mainFile.filename ||
         !req.body.mainFile.path ||
-        req.body.secondaryFiles.some(
-          (file: { filename: string; path: string }) =>
-            !file.filename || !file.path
-        )
+        req.body.secondaryFiles.some((file: { filename: string; path: string }) => !file.filename || !file.path)
       ) {
-        return responseHelper.throwBadRequestError(
-          "Invalid request body: files",
-          res
-        );
+        return responseHelper.throwBadRequestError("Invalid request body: files", res);
       }
     }
 
@@ -75,11 +53,8 @@ export const compareExcel = async (req: Request, res: Response) => {
       return responseHelper.throwBadRequestError("Excel type not found", res);
     }
 
-    if (!excel.filterableColumns.find((column) => column === targetColumn)) {
-      return responseHelper.throwBadRequestError(
-        "Target column doesnt valid for this excel type",
-        res
-      );
+    if (!excel.filterableColumns.find((column) => column.key === targetColumn)) {
+      return responseHelper.throwBadRequestError("Target column doesnt valid for this excel type", res);
     }
 
     // Logic start here
@@ -87,14 +62,10 @@ export const compareExcel = async (req: Request, res: Response) => {
 
     const skipRowCount = isFileRequest ? excel.startRowIndex : 2;
 
-    const mainFileName = isFileRequest
-      ? files.mainFile[0].originalname
-      : req.body.mainFile.filename;
+    const mainFileName = isFileRequest ? files.mainFile[0].originalname : req.body.mainFile.filename;
 
     const mainSheet = await getSheetData(
-      isFileRequest
-        ? files.mainFile[0].buffer
-        : path.join(__dirname, "../../public/combines", req.body.mainFile.path),
+      isFileRequest ? files.mainFile[0].buffer : path.join(__dirname, "../../public/combines", req.body.mainFile.path),
       excel.columns,
       skipRowCount
     );
@@ -126,20 +97,14 @@ export const compareExcel = async (req: Request, res: Response) => {
       productMap.set(productKey, { value });
     });
 
-    const secondaryFiles = isFileRequest
-      ? files.secondaryFiles
-      : (req.body.secondaryFiles as Record<string, any>[]);
+    const secondaryFiles = isFileRequest ? files.secondaryFiles : (req.body.secondaryFiles as Record<string, any>[]);
 
     const comparisonResults = await Promise.all(
       secondaryFiles.map(async (file) => {
-        const filename = isFileRequest
-          ? (file as Express.Multer.File).originalname
-          : file.filename;
+        const filename = isFileRequest ? (file as Express.Multer.File).originalname : file.filename;
 
         const fileSheet = await getSheetData(
-          isFileRequest
-            ? (file as Express.Multer.File).buffer
-            : path.join(__dirname, "../../public/combines", file.path),
+          isFileRequest ? (file as Express.Multer.File).buffer : path.join(__dirname, "../../public/combines", file.path),
           excel.columns,
           skipRowCount
         );
@@ -153,168 +118,37 @@ export const compareExcel = async (req: Request, res: Response) => {
           duplicateProduct.push({ filename, rows: fileDuplicate });
         }
 
-        const rows = fileSheet
-          .map((row) => {
-            const productKey = row[excel.primaryColumn];
-            const product = productMap.get(productKey);
-            const comparisonValue = row[targetColumn];
+        if (targetColumn === "sku_produk") {
+          const skuMap = new Set(fileSheet.map((row) => row.sku_produk));
 
-            if (!product) return null;
+          const missingSku = mainSheet.filter((row: any) => !skuMap.has(row.sku_produk));
 
-            const difference = Number(comparisonValue) - Number(product.value);
-            const differencePercentage =
-              (difference / Number(product.value)) * 100;
+          return { filename, rows: missingSku };
+        } else {
+          const rows = fileSheet
+            .map((row) => {
+              const productKey = row[excel.primaryColumn];
+              const product = productMap.get(productKey);
+              const comparisonValue = row[targetColumn];
 
-            const item: any = {
-              ...row,
-              sebelumnya: Number(product.value),
-              selisih: difference,
-              persentase: differencePercentage,
-            };
+              if (!product) return null;
 
-            return item;
-          })
-          .filter((row) => row && row.selisih !== 0);
+              const difference = Number(comparisonValue) - Number(product.value);
+              const differencePercentage = (difference / Number(product.value)) * 100;
 
-        return { filename, rows };
-      })
-    );
+              const item: any = {
+                ...row,
+                sebelumnya: Number(product.value),
+                selisih: difference,
+                persentase: differencePercentage,
+              };
 
-    return responseHelper.returnOkResponse("Comparison successful", res, {
-      excel: excel,
-      columns: excel.columns,
-      results: comparisonResults,
-      duplicated: duplicateProduct,
-    });
-  } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
-  }
-};
+              return item;
+            })
+            .filter((row) => row && row.selisih !== 0);
 
-export const findMissingSku = async (req: Request, res: Response) => {
-  const files = req.files as Record<string, Express.Multer.File[]>;
-  const { type } = req.body;
-
-  try {
-    // Validation start here
-    if (files) {
-      if (!files.mainFile || !files.secondaryFiles) {
-        return responseHelper.throwBadRequestError(
-          "mainFile and secondaryFiles are required",
-          res
-        );
-      }
-
-      if (
-        !isExcelFile(files.mainFile[0]) ||
-        files.secondaryFiles.some((file) => !isExcelFile(file))
-      ) {
-        return responseHelper.throwBadRequestError(
-          "File must be an excel file",
-          res
-        );
-      }
-    } else {
-      if (!req.body.mainFile || !req.body.secondaryFiles) {
-        return responseHelper.throwBadRequestError(
-          "mainFile and secondaryFiles are required",
-          res
-        );
-      }
-
-      if (
-        !req.body.mainFile.filename ||
-        !req.body.mainFile.path ||
-        req.body.secondaryFiles.some(
-          (file: { filename: string; path: string }) =>
-            !file.filename || !file.path
-        )
-      ) {
-        return responseHelper.throwBadRequestError(
-          "Invalid request body: files",
-          res
-        );
-      }
-    }
-
-    const excel = await ExcelModel.findOne({ type });
-
-    if (!excel) {
-      return responseHelper.throwBadRequestError("Excel type not found", res);
-    }
-
-    // Logic start here
-    const isFileRequest = files ? true : false;
-
-    const skipRowCount = isFileRequest ? excel.startRowIndex : 2;
-
-    const mainFileName = isFileRequest
-      ? files.mainFile[0].originalname
-      : req.body.mainFile.filename;
-
-    const mainSheet = await getSheetData(
-      isFileRequest
-        ? files.mainFile[0].buffer
-        : path.join(__dirname, "../../public/combines", req.body.mainFile.path),
-      excel.columns,
-      skipRowCount
-    );
-
-    const duplicateProduct: {
-      filename: string;
-      rows: { value: string; rowNumbers: number[] }[];
-    }[] = [];
-
-    const mainFileDuplicate = filterDuplicate(
-      mainSheet.map((row) => row[excel.primaryColumn]),
-      skipRowCount
-    );
-
-    if (mainFileDuplicate.length > 0) {
-      duplicateProduct.push({
-        filename: mainFileName,
-        rows: mainFileDuplicate,
-      });
-    }
-
-    const secondaryFiles = isFileRequest
-      ? files.secondaryFiles
-      : (req.body.secondaryFiles as [Record<string, any>]);
-
-    const comparisonResults = await Promise.all(
-      secondaryFiles.map(async (file) => {
-        const filename = isFileRequest
-          ? (file as Express.Multer.File).originalname
-          : file.filename;
-
-        const fileSheet = await getSheetData(
-          isFileRequest
-            ? (file as Express.Multer.File).buffer
-            : path.join(__dirname, "../../public/combines", file.path),
-          excel.columns,
-          skipRowCount
-        );
-
-        const fileDuplicate = filterDuplicate(
-          fileSheet.map((data) => data.sku_produk),
-          skipRowCount
-        );
-
-        if (fileDuplicate.length > 0) {
-          duplicateProduct.push({ filename, rows: fileDuplicate });
+          return { filename, rows };
         }
-
-        const skuMap = new Set(fileSheet.map((row) => row.sku_produk));
-
-        const missingSku = mainSheet.filter(
-          (row: any) => !skuMap.has(row.sku_produk)
-        );
-
-        return { filename, rows: missingSku };
       })
     );
 
@@ -324,11 +158,7 @@ export const findMissingSku = async (req: Request, res: Response) => {
       duplicated: duplicateProduct,
     });
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
@@ -337,21 +167,11 @@ export const findActualPrice = async (req: Request, res: Response) => {
 
   try {
     if (!files || !files.mainFile || !files.discountFile) {
-      return responseHelper.throwBadRequestError(
-        "mainFile and discountFile are required",
-        res
-      );
+      return responseHelper.throwBadRequestError("mainFile and discountFile are required", res);
     }
 
-    if (
-      !isExcelFile(files.mainFile[0]) ||
-      !isExcelFile(files.discountFile[0]) ||
-      (files.customFile && !isExcelFile(files.customFile[0]))
-    ) {
-      return responseHelper.throwBadRequestError(
-        "File must be an excel file",
-        res
-      );
+    if (!isExcelFile(files.mainFile[0]) || !isExcelFile(files.discountFile[0]) || (files.customFile && !isExcelFile(files.customFile[0]))) {
+      return responseHelper.throwBadRequestError("File must be an excel file", res);
     }
 
     const excel = await ExcelModel.findOne({ type: "shopee_product" });
@@ -374,11 +194,7 @@ export const findActualPrice = async (req: Request, res: Response) => {
     ];
 
     const [mainSheet, discountSheet] = await Promise.all([
-      getSheetData(
-        files.mainFile[0].buffer,
-        excel.columns,
-        excel.startRowIndex
-      ),
+      getSheetData(files.mainFile[0].buffer, excel.columns, excel.startRowIndex),
       getSheetData(files.discountFile[0].buffer, discountFileColumns, 2),
     ]);
 
@@ -398,11 +214,7 @@ export const findActualPrice = async (req: Request, res: Response) => {
         { key: "harga_khusus", label: "Harga Khusus" },
       ];
 
-      const customSheet = await getSheetData(
-        files.customFile[0].buffer,
-        customFileColumns,
-        2
-      );
+      const customSheet = await getSheetData(files.customFile[0].buffer, customFileColumns, 2);
 
       customSheet.forEach((row) => {
         const productKey = row[excel.primaryColumn];
@@ -441,19 +253,13 @@ export const findActualPrice = async (req: Request, res: Response) => {
     const updatedFilePath = `${outputFilenameSlug}_${uniqueId}.xlsx`;
 
     const updatedFileWorkbook = createExcelWorkbook(excel.columns, updatedRows);
-    updatedFileWorkbook.xlsx.writeFile(
-      path.join(__dirname, "../../public/combines", updatedFilePath)
-    );
+    updatedFileWorkbook.xlsx.writeFile(path.join(__dirname, "../../public/combines", updatedFilePath));
 
     return responseHelper.returnOkResponse("Combine successful", res, {
       filename: outputFilename,
       path: updatedFilePath,
     });
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };

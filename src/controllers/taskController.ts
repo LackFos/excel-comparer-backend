@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import mongoose, { mongo, Mongoose } from "mongoose";
 import { Request, Response } from "express";
-import { endOfDay, isValid, parseISO, startOfDay } from "date-fns";
+import { endOfDay, isValid, parseISO, startOfDay, sub } from "date-fns";
 import responseHelper from "../libs/helpers/responseHelper";
 import { getSheetData } from "../libs/helpers/excelHelper";
 import { filterDuplicate, isExcelFile } from "../libs/utils";
@@ -11,18 +11,12 @@ import { TaskStatus } from "../libs/enum";
 import archiver from "archiver";
 import ExcelModel from "../models/ExcelModel";
 
-export const getAllTasks = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const getAllTasks = async (req: Request, res: Response): Promise<void> => {
   const { startDate, endDate } = req.query;
 
   try {
     // Validation start here
-    if (
-      (startDate && !isValid(parseISO(startDate as string))) ||
-      (endDate && !isValid(parseISO(endDate as string)))
-    ) {
+    if ((startDate && !isValid(parseISO(startDate as string))) || (endDate && !isValid(parseISO(endDate as string)))) {
       const errorMessage = "startDate and endDate must be valid dates";
       return responseHelper.throwBadRequestError(errorMessage, res);
     }
@@ -45,18 +39,11 @@ export const getAllTasks = async (
 
     return responseHelper.returnOkResponse(message, res, tasks);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
-export const getTaskDetail = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const getTaskDetail = async (req: Request, res: Response): Promise<void> => {
   const id = req.params.id;
 
   try {
@@ -65,19 +52,13 @@ export const getTaskDetail = async (
       .select("name status config targetColumn file");
 
     if (!task || !task.excel) {
-      const message = task
-        ? "Excel related to the task not found"
-        : "Task not found";
+      const message = task ? "Excel related to the task not found" : "Task not found";
       return responseHelper.throwNotFoundError(message, res);
     }
 
     const taskFilePath = path.join(__dirname, "../../public/tasks", task.file);
 
-    const sheetColumns = [
-      ...task.excel.columns,
-      { key: "selisih", label: "Selisih" },
-      { key: "persentase", label: "Persentase" },
-    ];
+    const sheetColumns = [...task.excel.columns, { key: "selisih", label: "Selisih" }, { key: "persentase", label: "Persentase" }];
 
     const skipRow = 2;
 
@@ -90,28 +71,18 @@ export const getTaskDetail = async (
 
     return responseHelper.returnOkResponse("Task found", res, taskData);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
-export const createTask = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const createTask = async (req: Request, res: Response): Promise<void> => {
   const file = req.file!;
   const { name, type, config, targetColumn } = req.body;
 
   try {
     // Validation start here
     if (!isExcelFile(file)) {
-      return responseHelper.throwBadRequestError(
-        "File must be an excel file",
-        res
-      );
+      return responseHelper.throwBadRequestError("File must be an excel file", res);
     }
 
     if (!name || !type || !targetColumn) {
@@ -120,21 +91,11 @@ export const createTask = async (
 
     if (
       config &&
-      config.every(
-        ({
-          start,
-          end,
-          color,
-        }: {
-          start: string;
-          end: string;
-          color: string;
-        }) => {
-          if (!start) return false;
-          if (!end) return false;
-          if (!color || !color.match(/^#[0-9A-Fa-f]{6}$/)) return false;
-        }
-      )
+      config.every(({ start, end, color }: { start: string; end: string; color: string }) => {
+        if (!start) return false;
+        if (!end) return false;
+        if (!color || !color.match(/^#[0-9A-Fa-f]{6}$/)) return false;
+      })
     ) {
       return responseHelper.throwBadRequestError("Invalid config value", res);
     }
@@ -145,21 +106,14 @@ export const createTask = async (
       return responseHelper.throwBadRequestError("Excel type not found", res);
     }
 
-    if (!excel.columns.find((column) => column.key === targetColumn)) {
-      return responseHelper.throwBadRequestError(
-        "Target column doesnt valid for this excel type",
-        res
-      );
+    if (!excel.filterableColumns.find((column) => column.key === targetColumn)) {
+      return responseHelper.throwBadRequestError("Target column doesnt valid for this excel type", res);
     }
 
     // Logic start here
     const id = new mongoose.Types.ObjectId();
     const taskFilename = `${id}.xlsx`;
-    const taskFilePath = path.join(
-      __dirname,
-      "../../public/tasks",
-      taskFilename
-    );
+    const taskFilePath = path.join(__dirname, "../../public/tasks", taskFilename);
 
     fs.writeFileSync(taskFilePath, file.buffer);
 
@@ -176,18 +130,11 @@ export const createTask = async (
 
     return responseHelper.returnCreatedResponse("Task", createdTask, res);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
-export const updateTask = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const updateTask = async (req: Request, res: Response): Promise<void> => {
   const id = req.params.id;
   const { status } = req.body;
 
@@ -196,27 +143,17 @@ export const updateTask = async (
       return responseHelper.throwBadRequestError("Invalid request body", res);
     }
 
-    const task = await TaskModel.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true, runValidators: true }
-    )
+    const task = await TaskModel.findByIdAndUpdate(id, { status }, { new: true, runValidators: true })
       .populate({ path: "excel", select: "primaryColumn columns columnLabels" })
       .select("name status targetColumn file");
 
     if (!task || !task.excel) {
-      const errorMessage = task
-        ? "Excel related to the task not found"
-        : "Task not found";
+      const errorMessage = task ? "Excel related to the task not found" : "Task not found";
       return responseHelper.throwNotFoundError(errorMessage, res);
     }
 
     const rowSkip = 2;
-    const sheetColumns = [
-      ...task.excel.columns,
-      { key: "selisih", label: "Selisih" },
-      { key: "persentase", label: "Persentase" },
-    ];
+    const sheetColumns = [...task.excel.columns, { key: "selisih", label: "Selisih" }, { key: "persentase", label: "Persentase" }];
 
     const taskSheet = await getSheetData(task.file, sheetColumns, rowSkip);
 
@@ -225,17 +162,9 @@ export const updateTask = async (
       rows: taskSheet,
     };
 
-    return responseHelper.returnOkResponse(
-      "Task successfully updated!",
-      res,
-      taskData
-    );
+    return responseHelper.returnOkResponse("Task successfully updated!", res, taskData);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong. Please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong. Please try again later.", res, error);
   }
 };
 
@@ -246,38 +175,31 @@ export const submitTask = async (req: Request, res: Response) => {
   try {
     // Validation start here
     const task = await TaskModel.findById(id)
-      .populate({ path: "excel", select: "primaryColumn columns" })
+      .populate({ path: "excel", select: "primaryColumn columns startRowIndex" })
       .select("name status config targetColumn file");
 
     if (!file) {
-      return responseHelper.throwBadRequestError(
-        "File must be an excel file",
-        res
-      );
+      return responseHelper.throwBadRequestError("File must be an excel file", res);
     }
 
     if (!task || !task.excel) {
-      const errorMessage = task
-        ? "Task related excel not found"
-        : "Task not found";
+      const errorMessage = task ? "Task related excel not found" : "Task not found";
       return responseHelper.throwNotFoundError(errorMessage, res);
     }
 
     // Logic start here
     const taskExcel = task.excel;
 
+    const combinedExcelTypes = ["shopee_product"];
+
     // Prepare sheet data
     const taskFile = path.join(__dirname, "../../public/tasks", task.file);
-    const skipTaskSheetRow = 2;
+    const skipTaskSheetRow = combinedExcelTypes.includes(task.excel.type) ? 2 : task.excel.startRowIndex;
 
     const submissionFile = file.buffer;
     const skipSubmissionSheetRow = taskExcel.startRowIndex;
 
-    const sheetColumns = [
-      ...taskExcel.columns,
-      { key: "selisih", label: "Selisih" },
-      { key: "persentase", label: "Persentase" },
-    ];
+    const sheetColumns = [...taskExcel.columns, { key: "selisih", label: "Selisih" }, { key: "persentase", label: "Persentase" }];
 
     const [taskSheet, submissionSheet] = await Promise.all([
       getSheetData(taskFile, sheetColumns, skipTaskSheetRow),
@@ -300,6 +222,8 @@ export const submitTask = async (req: Request, res: Response) => {
       });
     });
 
+    const submissionDuplicateSet = new Set(submissionDuplicates.map((row) => row.value));
+
     const remainingTasks = taskSheet.map((row) => {
       const product = productMap.get(row[taskExcel.primaryColumn]);
       const submissionValue = row[task.targetColumn];
@@ -315,6 +239,7 @@ export const submitTask = async (req: Request, res: Response) => {
       items[task.targetColumn] = product.value;
 
       if (product.value !== submissionValue) items.isModified = true;
+      if (submissionDuplicateSet.has(row[taskExcel.primaryColumn])) items.isDuplicated = true;
 
       return items;
     });
@@ -327,11 +252,7 @@ export const submitTask = async (req: Request, res: Response) => {
 
     return responseHelper.returnOkResponse("Remaining Task", res, taskData);
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };
 
@@ -363,10 +284,6 @@ export const archiveTask = async (req: Request, res: Response) => {
       path: "public/archives/" + filename,
     });
   } catch (error) {
-    return responseHelper.throwInternalError(
-      "Something went wrong, please try again later.",
-      res,
-      error
-    );
+    return responseHelper.throwInternalError("Something went wrong, please try again later.", res, error);
   }
 };

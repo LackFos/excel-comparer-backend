@@ -20,7 +20,7 @@ export const excelSchema = new Schema<excelDocument>(
       required: true,
     },
     filterableColumns: {
-      type: [String],
+      type: [{ key: { type: String, required: true }, label: { type: String, required: true } }],
       required: true,
     },
     startRowIndex: {
