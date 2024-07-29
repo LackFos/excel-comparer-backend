@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon -q dist/index.js"
+    "dev": "nodemon -q dist/index.js",
+    "prod": "tsc --build tsconfig.json"
   },
   "author": "",
   "license": "ISC",

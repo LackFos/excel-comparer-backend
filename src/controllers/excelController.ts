@@ -133,9 +133,9 @@ export const compareExcel = async (req: Request, res: Response) => {
 
               if (!product) return null;
 
-              const difference = Number(product.value) - Number(comparisonValue);
+              const difference = Number(comparisonValue) - Number(product.value);
 
-              const differencePercentage = (difference / Number(product.value)) * 100;
+              const differencePercentage = (difference / Number(comparisonValue)) * 100;
 
               const item: any = {
                 ...row,
