@@ -1,14 +1,14 @@
 import fs from "fs";
 import path from "path";
-import mongoose, { mongo, Mongoose } from "mongoose";
+import archiver from "archiver";
+import mongoose from "mongoose";
 import { Request, Response } from "express";
-import { endOfDay, isValid, parseISO, startOfDay, sub } from "date-fns";
+import { endOfDay, isValid, parseISO, startOfDay } from "date-fns";
 import responseHelper from "../libs/helpers/responseHelper";
 import { getSheetData } from "../libs/helpers/excelHelper";
 import { filterDuplicate, isExcelFile } from "../libs/utils";
 import TaskModel from "../models/TaskModel";
 import { TaskStatus } from "../libs/enum";
-import archiver from "archiver";
 import ExcelModel from "../models/ExcelModel";
 
 export const getAllTasks = async (req: Request, res: Response): Promise<void> => {
@@ -155,7 +155,8 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
     const rowSkip = 2;
     const sheetColumns = [...task.excel.columns, { key: "selisih", label: "Selisih" }, { key: "persentase", label: "Persentase" }];
 
-    const taskSheet = await getSheetData(task.file, sheetColumns, rowSkip);
+    const taskFilePath = path.join(__dirname, "../../public/tasks", task.file);
+    const taskSheet = await getSheetData(taskFilePath, sheetColumns, rowSkip);
 
     const taskData = {
       ...task.toJSON(),
